@@ -162,7 +162,10 @@
   .kb-status{ flex:1; text-align:center; font-family:var(--mono); font-size:11px; color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .kb-status.live{ color:var(--rec); }
 
-  #pianoWrap{ height:150px; display:flex; flex-direction:column; gap:5px; }
+  #pianoWrap{ height:150px; display:flex; flex-direction:column; gap:5px; touch-action:none; -webkit-user-select:none; user-select:none; }
+  .pkey{ touch-action:none; -webkit-touch-callout:none; }
+  .sync-row{ display:flex; align-items:center; justify-content:flex-end; gap:6px; margin-top:7px; font-size:11px; color:var(--text-dim); }
+  .sync-row input{ width:62px; padding:4px 6px; font-size:12px; border-radius:10px; }
   .piano-row{ position:relative; flex:1; min-height:0; }
   .white-row{ display:flex; height:100%; gap:2px; }
   .pkey{ user-select:none; font-family:var(--mono); }
@@ -274,6 +277,7 @@
       <button class="t-btn" id="rewindBtn" title="처음으로">◀</button>
       <button class="t-btn metro" id="metroToggleBtn" title="재생·녹음 시 메트로놈"><svg viewBox="0 0 24 24" width="27" height="27" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8l-2-14h-4z"></path><line x1="12" y1="7" x2="15" y2="19"></line><circle cx="12" cy="4" r="1.3"></circle><line x1="12" y1="5.3" x2="12" y2="7"></line></svg></button>
     </div>
+    <div class="sync-row"><label for="syncOffsetInput">녹음 싱크 보정</label><input type="number" id="syncOffsetInput" value="0" step="5" min="-500" max="500"><span>ms</span></div>
     <div class="live-wave-wrap" id="liveWaveWrap"><canvas id="liveWaveCanvas" width="500" height="60"></canvas></div>
   </section>
 
@@ -328,6 +332,11 @@
       <div style="flex:1"></div>
       <span style="font-size:11px;color:var(--text-dim);">체크된 트랙만 저장돼요</span>
     </div>
+    <div class="row" style="margin-top:6px;">
+      <label class="toggle-chip on" id="mixChip"><input type="checkbox" id="mixToggle" checked>합친 믹스 파일도 저장</label>
+      <div style="flex:1"></div>
+      <button class="mini-btn" id="newSessionBtn">새로 시작</button>
+    </div>
     <div id="projectStatus" class="project-status">프로젝트 저장 시 선택한 위치에 PhraseNote 폴더가 만들어집니다.</div>
   </section>
 
@@ -344,7 +353,7 @@
   var micSourceNode = null, analyser = null, liveWaveRAF = null;
   var tracks = []; var trackIdSeq = 1;
   var bpm = 100, beatsPerBar = 4, noteValue = 4;
-  var countInEnabled = true, metronomeEnabled = false, metronomeSound = 'click';
+  var countInEnabled = true, metronomeSound = 'click';
   var metronomeDuringPlayback = true;
   var metronomeStandaloneRunning = false;
   var isRecording = false, recordingType = null;
@@ -369,7 +378,7 @@
     masterGain.gain.value = parseFloat(document.getElementById('masterVol').value);
     masterGain.connect(audioCtx.destination);
     metronomeGain = audioCtx.createGain();
-    metronomeGain.gain.value = 0.55;
+    metronomeGain.gain.value = metronomeDuringPlayback ? 0.55 : 0;
     metronomeGain.connect(audioCtx.destination);
     var len = Math.floor(audioCtx.sampleRate * 0.3);
     noiseBuffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
@@ -520,12 +529,12 @@
 
   function schedulerTick(){
     while (nextClickTime < audioCtx.currentTime + 0.1){
-      var barPos = currentClickBeat % beatsPerBar;
-      if (metronomeEnabled) scheduleClick(nextClickTime, barPos === 0);
+      var barPos = ((currentClickBeat % beatsPerBar) + beatsPerBar) % beatsPerBar;
+      if (metronomeDuringPlayback) scheduleClick(nextClickTime, barPos === 0);
       var s = document.getElementById('status-line');
       var kbS = document.getElementById('kbStatus');
       var label = '마디 ' + (Math.floor(currentClickBeat / beatsPerBar) + 1) + ' · 박 ' + (barPos + 1);
-      if (isRecording && recordStartCtxTime > nextClickTime) label = '카운트인 · ' + (beatsPerBar - barPos);
+      if (isRecording && recordStartCtxTime > nextClickTime + 1e-4) label = '카운트인 · ' + Math.round((recordStartCtxTime - nextClickTime) / beatDuration());
       s.textContent = (isRecording ? '녹음 중 · ' : (isPlaying ? '재생 중 · ' : (metronomeStandaloneRunning ? '' : ''))) + label;
       s.className = isRecording ? 'live' : '';
       if (kbS) { kbS.textContent = (isRecording && recordingType==='midi' ? '녹음 중 · ' : '') + label; kbS.className = (isRecording && recordingType==='midi') ? 'kb-status live' : 'kb-status'; }
@@ -537,9 +546,8 @@
   function startScheduler(startCtxTime, fromSeconds){
     var bd = beatDuration();
     fromSeconds = fromSeconds || 0;
-    var beatsElapsed = fromSeconds / bd;
-    currentClickBeat = Math.ceil(beatsElapsed - 1e-6);
-    if (currentClickBeat < 0) currentClickBeat = 0;
+    // fromSeconds가 음수(카운트인 구간)여도 실제 박자 격자에 맞춰 계산
+    currentClickBeat = Math.ceil(fromSeconds / bd - 1e-6);
     nextClickTime = startCtxTime + (currentClickBeat * bd - fromSeconds);
     if (schedulerTimer) clearInterval(schedulerTimer);
     schedulerTimer = setInterval(schedulerTick, 25);
@@ -551,16 +559,16 @@
   /* ---- 메트로놈 단독 재생 (정지 상태에서 BPM/박자 감 잡기용) ---- */
   function startMetronomeStandalone(){
     initAudio(); audioCtx.resume();
-    metronomeEnabled = true;
     var startTime = audioCtx.currentTime + 0.08;
     startScheduler(startTime, 0);
     metronomeStandaloneRunning = true;
+    acquireWakeLock();
     updateMetronomeStandaloneUI();
   }
   function stopMetronomeStandalone(){
     stopScheduler();
     metronomeStandaloneRunning = false;
-    metronomeEnabled = false;
+    releaseWakeLock();
     document.getElementById('status-line').textContent = '대기 중';
     document.getElementById('status-line').className = '';
     updateMetronomeStandaloneUI();
@@ -592,7 +600,7 @@
     playheadSeconds = seconds;
     renderPlayheadPosition();
     updateTransportUI();
-    if (wasPlaying) playAll();
+    if (wasPlaying && seconds < sessionContentEnd() - 0.05) playAll(); else if (wasPlaying) releaseWakeLock();
   }
 
   /* simple "EP" synth voice, rendered against any given AudioContext (live or offline) */
@@ -614,6 +622,7 @@
     var stopT = startTime + duration + 0.35;
     o1.start(startTime); o2.start(startTime);
     o1.stop(stopT); o2.stop(stopT);
+    return [o1, o2];
   }
 
   /* live sustained note (for keyboard press/hold), returns handle for release */
@@ -650,56 +659,166 @@
     if (track.offset >= fromSeconds) return { delay: track.offset - fromSeconds, bufferOffset: 0 };
     return { delay: 0, bufferOffset: fromSeconds - track.offset };
   }
+  function sessionContentEnd(){
+    var m = 0;
+    tracks.forEach(function(t){ var e = t.offset + t.duration; if (e > m) m = e; });
+    return m;
+  }
+
+  /* 트랙별 게인 노드 — 재생 중 뮤트/솔로/볼륨을 즉시 반영 */
+  var trackGainNodes = {};
+  function trackAudible(t){ if (t.muted) return false; if (soloActive() && !t.solo) return false; return true; }
+  function applyTrackGains(){
+    if (!audioCtx) return;
+    tracks.forEach(function(t){
+      var g = trackGainNodes[t.id];
+      if (g) g.gain.setTargetAtTime(trackAudible(t) ? t.volume : 0, audioCtx.currentTime, 0.015);
+    });
+  }
+  /* fromSeconds(타임라인 위치)를 ctxStart(오디오 시계 시각)에 맞춰 모든 트랙 예약. 반환값 = 가장 늦게 끝나는 지점 */
+  function scheduleTracksFrom(fromSeconds, ctxStart){
+    trackGainNodes = {};
+    var maxEnd = fromSeconds;
+    tracks.forEach(function(t){
+      var params = trackPlaybackParams(t, fromSeconds);
+      if (!params) return;
+      if (t.offset + t.duration > maxEnd) maxEnd = t.offset + t.duration;
+      var g = audioCtx.createGain();
+      g.gain.value = trackAudible(t) ? t.volume : 0;
+      g.connect(masterGain);
+      trackGainNodes[t.id] = g;
+      if (t.type === 'audio'){
+        var src = audioCtx.createBufferSource(); src.buffer = t.buffer;
+        src.connect(g);
+        src.start(ctxStart + params.delay, params.bufferOffset);
+        activeSources.push(src);
+      } else {
+        t.notes.forEach(function(n){
+          if (n.off <= params.bufferOffset) return;
+          var on = n.on - params.bufferOffset, dur = n.off - n.on;
+          if (on < 0){ dur += on; on = 0; }
+          var nodes = playEP(audioCtx, n.freq, ctxStart + params.delay + on, Math.max(0.05, dur), g, 1);
+          activeSources.push.apply(activeSources, nodes);
+        });
+      }
+    });
+    return maxEnd;
+  }
+
+  /* ---- 지연(레이턴시) 보정 ---- */
+  var syncOffsetMs = 0;
+  function outputLatencySec(){ if (!audioCtx) return 0; return (audioCtx.baseLatency || 0) + (audioCtx.outputLatency || 0); }
+  function inputLatencySec(){
+    try { var st = micStream && micStream.getAudioTracks()[0].getSettings(); return (st && typeof st.latency === 'number') ? st.latency : 0; }
+    catch(e){ return 0; }
+  }
+
+  /* ---- 마이크 PCM 직접 캡처 (MediaRecorder 대체: 샘플 단위 정확 + 무손실) ---- */
+  var captureNode = null, captureSink = null, captureChunks = [], captureActive = false, captureReady = null, flushResolver = null;
+  var CAPTURE_WORKLET = "class PNCapture extends AudioWorkletProcessor{constructor(){super();this.buf=new Float32Array(4096);this.n=0;this.start=0;" +
+    "this.port.onmessage=()=>{if(this.n){this.port.postMessage({frame:this.start,data:this.buf.slice(0,this.n)});this.n=0;}this.port.postMessage({flushed:true});};}" +
+    "process(inputs){var ch=inputs[0]&&inputs[0][0];if(ch){if(this.n===0)this.start=currentFrame;this.buf.set(ch,this.n);this.n+=ch.length;" +
+    "if(this.n>=3968){this.port.postMessage({frame:this.start,data:this.buf.slice(0,this.n)});this.n=0;}}return true;}}" +
+    "registerProcessor('pn-capture',PNCapture);";
+  function setupCapture(){
+    if (captureReady) return captureReady;
+    captureReady = new Promise(function(resolve){
+      setupAnalyser();
+      captureSink = audioCtx.createGain(); captureSink.gain.value = 0; captureSink.connect(audioCtx.destination);
+      function useScriptProcessor(){
+        var sp = audioCtx.createScriptProcessor(4096, 1, 1);
+        sp.onaudioprocess = function(e){
+          if (!captureActive) return;
+          var d = e.inputBuffer.getChannelData(0);
+          captureChunks.push({ frame: Math.round(e.playbackTime * audioCtx.sampleRate) - d.length, data: new Float32Array(d) });
+        };
+        micSourceNode.connect(sp); sp.connect(captureSink);
+        captureNode = sp; resolve();
+      }
+      if (audioCtx.audioWorklet && window.AudioWorkletNode){
+        var url = URL.createObjectURL(new Blob([CAPTURE_WORKLET], { type:'application/javascript' }));
+        audioCtx.audioWorklet.addModule(url).then(function(){
+          var node = new AudioWorkletNode(audioCtx, 'pn-capture', { numberOfInputs:1, numberOfOutputs:1, channelCount:1, channelCountMode:'explicit' });
+          node.port.onmessage = function(ev){
+            if (ev.data.flushed){ if (flushResolver){ var r = flushResolver; flushResolver = null; r(); } return; }
+            if (captureActive) captureChunks.push({ frame: ev.data.frame, data: ev.data.data });
+          };
+          micSourceNode.connect(node); node.connect(captureSink);
+          captureNode = node; resolve();
+        }).catch(useScriptProcessor);
+      } else {
+        useScriptProcessor();
+      }
+    });
+    return captureReady;
+  }
+  function flushCapture(){
+    return new Promise(function(resolve){
+      if (!captureNode || !captureNode.port){ resolve(); return; }
+      flushResolver = resolve;
+      captureNode.port.postMessage('flush');
+      setTimeout(function(){ if (flushResolver){ flushResolver = null; resolve(); } }, 600);
+    });
+  }
+  function assembleCapturedBuffer(startFrame){
+    var endFrame = startFrame;
+    captureChunks.forEach(function(c){ var e = c.frame + c.data.length; if (e > endFrame) endFrame = e; });
+    var len = endFrame - startFrame;
+    if (len <= 0) return null;
+    var buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+    var out = buf.getChannelData(0);
+    captureChunks.forEach(function(c){
+      var dst = c.frame - startFrame, src = c.data;
+      if (dst < 0){ if (-dst >= src.length) return; src = src.subarray(-dst); dst = 0; }
+      if (dst >= len) return;
+      if (dst + src.length > len) src = src.subarray(0, len - dst);
+      out.set(src, dst);
+    });
+    return buf;
+  }
+
+  /* ---- 화면 꺼짐 방지 (녹음·재생 중) ---- */
+  var wakeLockSentinel = null;
+  function acquireWakeLock(){
+    if (!('wakeLock' in navigator) || wakeLockSentinel) return;
+    navigator.wakeLock.request('screen').then(function(sn){
+      wakeLockSentinel = sn;
+      sn.addEventListener('release', function(){ wakeLockSentinel = null; });
+    }).catch(function(){});
+  }
+  function releaseWakeLock(){
+    if (wakeLockSentinel){ try { wakeLockSentinel.release(); } catch(e){} wakeLockSentinel = null; }
+  }
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'visible' && (isRecording || isPlaying || metronomeStandaloneRunning)) acquireWakeLock();
+  });
 
   function startRecording(type){
     initAudio();
     audioCtx.resume();
-    var proceed = (type === 'audio') ? ensureMic() : Promise.resolve();
+    var proceed = (type === 'audio') ? ensureMic().then(setupCapture) : Promise.resolve();
     proceed.then(function(){
+      if (metronomeStandaloneRunning){ metronomeStandaloneRunning = false; stopScheduler(); }
       recordingType = type;
       isRecording = true;
-      metronomeStandaloneRunning = false;
-      metronomeEnabled = metronomeDuringPlayback;
       pendingRecordOffset = playheadSeconds;
       updateTransportUI();
-      if (type === 'audio') startLiveWave();
+      acquireWakeLock();
 
       var bd = beatDuration();
       var countInBeats = countInEnabled ? beatsPerBar : 0;
       var scheduleStart = audioCtx.currentTime + 0.15;
-      startScheduler(scheduleStart, Math.max(0, pendingRecordOffset - countInBeats * bd));
+      startScheduler(scheduleStart, pendingRecordOffset - countInBeats * bd);
       recordStartCtxTime = scheduleStart + countInBeats * bd;
       startPlayheadLoop(recordStartCtxTime, pendingRecordOffset);
 
       stopActiveSources();
-      tracks.forEach(function(t){
-        if (t.muted) return;
-        if (soloActive() && !t.solo) return;
-        var params = trackPlaybackParams(t, pendingRecordOffset);
-        if (!params) return;
-        if (t.type === 'audio'){
-          var src = audioCtx.createBufferSource();
-          src.buffer = t.buffer;
-          var g = audioCtx.createGain(); g.gain.value = t.volume;
-          src.connect(g).connect(masterGain);
-          src.start(recordStartCtxTime + params.delay, params.bufferOffset);
-          activeSources.push(src);
-        } else {
-          t.notes.forEach(function(n){
-            if (n.off <= params.bufferOffset) return;
-            var on = Math.max(0, n.on - params.bufferOffset);
-            playEP(audioCtx, n.freq, recordStartCtxTime + params.delay + on, Math.max(0.05, n.off - n.on), masterGain, 1);
-          });
-        }
-      });
+      scheduleTracksFrom(pendingRecordOffset, recordStartCtxTime);
 
       if (type === 'audio'){
-        recordedChunks = [];
-        mediaRecorder = new MediaRecorder(micStream);
-        mediaRecorder.ondataavailable = function(e){ if (e.data.size > 0) recordedChunks.push(e.data); };
-        mediaRecorder.onstop = onAudioRecordStop;
-        var delayMs = Math.max(0, (recordStartCtxTime - audioCtx.currentTime) * 1000);
-        setTimeout(function(){ if (isRecording && mediaRecorder && mediaRecorder.state === 'inactive') mediaRecorder.start(); }, delayMs);
+        captureChunks = [];
+        captureActive = true;
+        startLiveWave();
       } else {
         tempMidiNotes = [];
         activeNoteOns = {};
@@ -714,18 +833,31 @@
   function stopActiveSources(){
     activeSources.forEach(function(s){ try{ s.stop(); }catch(e){} });
     activeSources = [];
+    trackGainNodes = {};
   }
 
   function stopRecording(){
     if (!isRecording) return;
+    var type = recordingType;
     isRecording = false;
     stopScheduler();
     stopActiveSources();
     stopPlayheadLoop();
-    if (recordingType === 'audio'){
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    releaseWakeLock();
+    if (type === 'audio'){
       stopLiveWave();
-    } else if (recordingType === 'midi'){
+      var offset = pendingRecordOffset;
+      // 스피커 출력 지연 + 마이크 입력 지연 + 사용자 보정값만큼 앞부분을 잘라내서 박자에 맞춤
+      var latency = outputLatencySec() + inputLatencySec() + syncOffsetMs / 1000;
+      var startFrame = Math.round((recordStartCtxTime + latency) * audioCtx.sampleRate);
+      flushCapture().then(function(){
+        captureActive = false;
+        var buffer = assembleCapturedBuffer(startFrame);
+        captureChunks = [];
+        if (!buffer || buffer.duration < 0.05) return;
+        addTrack({ type:'audio', buffer:buffer, duration:buffer.duration, offset:offset, name:'오디오 ' + trackIdSeq });
+      });
+    } else if (type === 'midi'){
       Object.keys(activeNoteOns).forEach(function(name){ releaseKey(name); });
       finalizeMidiTrack();
     }
@@ -734,20 +866,11 @@
     updateTransportUI();
   }
 
-  function onAudioRecordStop(){
-    var blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-    blob.arrayBuffer().then(function(buf){
-      audioCtx.decodeAudioData(buf, function(buffer){
-        addTrack({ type:'audio', buffer:buffer, duration:buffer.duration, offset:pendingRecordOffset, name:'오디오 ' + (tracks.length + 1) });
-      }, function(err){ alert('녹음을 읽지 못했어요: ' + err); });
-    });
-  }
-
   function finalizeMidiTrack(){
     if (tempMidiNotes.length === 0) return;
     var duration = 0;
     tempMidiNotes.forEach(function(n){ if (n.off > duration) duration = n.off; });
-    addTrack({ type:'midi', notes: tempMidiNotes.slice(), duration: duration, offset:pendingRecordOffset, name:'건반 ' + (tracks.length + 1) });
+    addTrack({ type:'midi', notes: tempMidiNotes.slice(), duration: duration, offset:pendingRecordOffset, name:'건반 ' + trackIdSeq });
   }
 
   /* ============ playback ============ */
@@ -755,44 +878,32 @@
     if (tracks.length === 0) return;
     initAudio(); audioCtx.resume();
     var fromSeconds = playheadSeconds;
+    if (fromSeconds >= sessionContentEnd() - 0.05) fromSeconds = 0; // 끝에 있으면 처음부터
     metronomeStandaloneRunning = false;
-    metronomeEnabled = metronomeDuringPlayback;
     stopAll();
     playheadSeconds = fromSeconds;
     var playStart = audioCtx.currentTime + 0.12;
-    if (metronomeEnabled) startScheduler(playStart, fromSeconds);
-    var maxEnd = fromSeconds;
-    tracks.forEach(function(t){
-      if (t.muted) return;
-      if (soloActive() && !t.solo) return;
-      var params = trackPlaybackParams(t, fromSeconds);
-      if (!params) return;
-      if (t.offset + t.duration > maxEnd) maxEnd = t.offset + t.duration;
-      if (t.type === 'audio'){
-        var src = audioCtx.createBufferSource(); src.buffer = t.buffer;
-        var g = audioCtx.createGain(); g.gain.value = t.volume;
-        src.connect(g).connect(masterGain);
-        src.start(playStart + params.delay, params.bufferOffset);
-        activeSources.push(src);
-      } else {
-        t.notes.forEach(function(n){
-          if (n.off <= params.bufferOffset) return;
-          var on = Math.max(0, n.on - params.bufferOffset);
-          playEP(audioCtx, n.freq, playStart + params.delay + on, Math.max(0.05, n.off - n.on), masterGain, 1);
-        });
-      }
-    });
+    startScheduler(playStart, fromSeconds);
+    var maxEnd = scheduleTracksFrom(fromSeconds, playStart);
     isPlaying = true;
     updateTransportUI();
+    acquireWakeLock();
     startPlayheadLoop(playStart, fromSeconds);
     var remaining = Math.max(0.3, maxEnd - fromSeconds);
-    playStopTimer = setTimeout(function(){ stopAll(); }, (remaining + 0.6) * 1000);
+    playStopTimer = setTimeout(function(){
+      playStopTimer = null;
+      stopAll();
+      playheadSeconds = 0;               // 끝까지 재생하면 처음으로 복귀
+      renderPlayheadPosition();
+      if (tlScrollEl) tlScrollEl.scrollLeft = 0;
+    }, (remaining + 0.3) * 1000);
   }
 
   function stopAll(){
     stopActiveSources();
     stopScheduler();
     stopPlayheadLoop();
+    releaseWakeLock();
     if (playStopTimer){ clearTimeout(playStopTimer); playStopTimer = null; }
     isPlaying = false;
     document.getElementById('status-line').textContent = '대기 중';
@@ -802,8 +913,11 @@
 
   /* ============ tracks state + multitrack timeline ============ */
   function addTrack(obj){
-    tracks.push(Object.assign({ id:trackIdSeq++, muted:false, solo:false, volume:1, offset:0, selected:true }, obj));
+    var t = Object.assign({ id:trackIdSeq++, muted:false, solo:false, volume:1, offset:0, selected:true }, obj);
+    tracks.push(t);
     renderTimeline();
+    updateTransportUI();
+    saveTrackToSession(t);
   }
 
   var pxPerSec = 60, userZoomed = false, followPlayhead = true;
@@ -940,14 +1054,19 @@
         '</div>' +
         '<input type="range" class="vol-slider" min="0" max="1" step="0.01" value="' + t.volume + '">';
       controls.appendChild(row);
-      row.querySelector('.track-select-cb').onchange = function(e){ t.selected = e.target.checked; };
-      row.querySelector('.mute-btn').onclick = function(){ t.muted = !t.muted; renderTimeline(); };
-      row.querySelector('.solo-btn').onclick = function(){ t.solo = !t.solo; renderTimeline(); };
+      row.querySelector('.track-select-cb').onchange = function(e){ t.selected = e.target.checked; saveSessionMeta(); };
+      row.querySelector('.mute-btn').onclick = function(){ t.muted = !t.muted; renderTimeline(); applyTrackGains(); saveSessionMeta(); };
+      row.querySelector('.solo-btn').onclick = function(){ t.solo = !t.solo; renderTimeline(); applyTrackGains(); saveSessionMeta(); };
       row.querySelector('.dl-btn').onclick = function(){ exportTrack(t); };
       row.querySelector('.del-btn').onclick = function(){
-        if (confirm(t.name + ' 트랙을 삭제할까요?')){ tracks = tracks.filter(function(x){ return x.id !== t.id; }); renderTimeline(); }
+        if (confirm(t.name + ' 트랙을 삭제할까요?')){
+          var g = trackGainNodes[t.id]; if (g) g.gain.value = 0;
+          tracks = tracks.filter(function(x){ return x.id !== t.id; });
+          renderTimeline(); updateTransportUI();
+          sessionDelete('track:' + t.id); saveSessionMeta();
+        }
       };
-      row.querySelector('.vol-slider').oninput = function(e){ t.volume = parseFloat(e.target.value); };
+      row.querySelector('.vol-slider').oninput = function(e){ t.volume = parseFloat(e.target.value); applyTrackGains(); saveSessionMeta(); };
 
       var lane = document.createElement('div');
       lane.className = 'tl-lane';
@@ -1156,8 +1275,14 @@
     });
   }
 
+  function trackNum(t){ return String(t.id).padStart(2, '0'); }
+  function trackExportBlob(t){
+    return t.type === 'audio'
+      ? audioBufferToWav(padAudioBufferForExport(t.buffer, t.offset))
+      : buildMidiFile(shiftedTrackForExport(t), bpm);
+  }
   function exportTrack(t){
-    var name = fileNamePrefix();
+    var name = fileNamePrefix() + '_' + trackNum(t);
     if (t.type === 'audio'){
       downloadBlob(audioBufferToWav(padAudioBufferForExport(t.buffer, t.offset)), name + '.wav');
       return;
@@ -1165,27 +1290,25 @@
     downloadBlob(buildMidiFile(shiftedTrackForExport(t), bpm), name + '.mid');
   }
 
-  function exportMix(){
-    if (tracks.length === 0){ alert('내보낼 트랙이 없어요.'); return; }
+  /* 선택된 트랙들을 타임라인 위치 그대로 한 파일로 합침 (뮤트된 트랙은 제외) */
+  function renderMixBlob(list){
     var maxEnd = 0;
-    tracks.forEach(function(t){ if (t.offset + t.duration > maxEnd) maxEnd = t.offset + t.duration; });
+    list.forEach(function(t){ if (t.offset + t.duration > maxEnd) maxEnd = t.offset + t.duration; });
+    if (maxEnd <= 0) return Promise.resolve(null);
     var sr = audioCtx ? audioCtx.sampleRate : 44100;
-    var offline = new OfflineAudioContext(2, Math.ceil((maxEnd + 0.6) * sr), sr);
+    var offline = new OfflineAudioContext(2, Math.ceil((maxEnd + 0.4) * sr), sr);
     var mg = offline.createGain(); mg.gain.value = 1; mg.connect(offline.destination);
-    tracks.forEach(function(t){
-      if (t.muted) return;
-      if (soloActive() && !t.solo) return;
+    list.forEach(function(t){
+      if (!trackAudible(t)) return;
+      var g = offline.createGain(); g.gain.value = t.volume; g.connect(mg);
       if (t.type === 'audio'){
         var src = offline.createBufferSource(); src.buffer = t.buffer;
-        var g = offline.createGain(); g.gain.value = t.volume;
-        src.connect(g).connect(mg); src.start(t.offset);
+        src.connect(g); src.start(t.offset);
       } else {
-        t.notes.forEach(function(n){ playEP(offline, n.freq, t.offset + n.on, Math.max(0.05, n.off - n.on), mg, 1); });
+        t.notes.forEach(function(n){ playEP(offline, n.freq, t.offset + n.on, Math.max(0.05, n.off - n.on), g, 1); });
       }
     });
-    offline.startRendering().then(function(rendered){
-      downloadBlob(audioBufferToWav(rendered), fileNamePrefix() + '.wav');
-    });
+    return offline.startRendering().then(function(rendered){ return audioBufferToWav(rendered); });
   }
 
   /* ============ project save ============ */
@@ -1194,7 +1317,7 @@
   }
   function projectFilePrefix(index, track){
     var type = track.type === 'audio' ? 'wav' : 'mid';
-    var num = String(index + 1).padStart(2, '0');
+    var num = trackNum(track);
     var base = sanitizeFileName(document.getElementById('projectNameInput').value || fileNamePrefix());
     return base + '_' + num + '.' + type;
   }
@@ -1208,7 +1331,7 @@
       noteValue: noteValue,
       createdAt: new Date().toISOString(),
       tracks: tracks.map(function(t, i){
-        return { index:i + 1, name:t.name, type:t.type, duration:t.duration, volume:t.volume, muted:t.muted, solo:t.solo, file:projectFilePrefix(i,t) };
+        return { id:t.id, name:t.name, type:t.type, offset:t.offset, duration:t.duration, volume:t.volume, muted:t.muted, solo:t.solo, file:projectFilePrefix(i,t) };
       })
     }, null, 2);
   }
@@ -1332,10 +1455,25 @@
     }
   }
   async function writeFileToDir(dir, filename, blob){
-    var handle = await dir.getFileHandle(filename, { create:true });
-    var writable = await handle.createWritable();
-    await writable.write(blob);
-    await writable.close();
+    for (var attempt = 0; attempt < 2; attempt++){
+      try {
+        var handle = await dir.getFileHandle(filename, { create:true });
+        var writable = await handle.createWritable({ keepExistingData:false });
+        await writable.write(blob);
+        await writable.close();
+        return;
+      } catch (e){
+        // 같은 이름 파일이 이미 있거나 캐시된 파일 상태가 어긋난 경우: 지우고 한 번 더 시도
+        if (attempt === 0 && e && (e.name === 'InvalidStateError' || e.name === 'NoModificationAllowedError')){
+          try { await dir.removeEntry(filename); } catch(_){}
+          continue;
+        }
+        throw e;
+      }
+    }
+  }
+  function downloadFilesAsFallback(files){
+    files.forEach(function(f, i){ setTimeout(function(){ downloadBlob(f.blob, f.name); }, i * 400); });
   }
   function blobToBase64(blob){
     return new Promise(function(resolve, reject){
@@ -1355,41 +1493,155 @@
     var status = document.getElementById('projectStatus');
     var projectName = sanitizeFileName(document.getElementById('projectNameInput').value);
     document.getElementById('projectNameInput').value = projectName;
+
+    // 저장할 파일 목록을 먼저 만들어두고, 저장 경로(안드로이드/폴더/다운로드)만 바꿔 씀
+    var files = selectedTracks.map(function(t, i){ return { name: projectFilePrefix(i, t), blob: trackExportBlob(t) }; });
+    if (document.getElementById('mixToggle').checked && selectedTracks.length > 1){
+      status.textContent = '믹스 파일 만드는 중…';
+      var mixBlob = await renderMixBlob(selectedTracks);
+      if (mixBlob) files.push({ name: projectName + '_mix.wav', blob: mixBlob });
+    }
+    files.push({ name: 'project.json', blob: new Blob([buildProjectMeta(projectName)], { type:'application/json' }) });
+    var doneMsg = '저장 완료(' + selectedTracks.length + '개 트랙' + (files.length > selectedTracks.length + 1 ? ' + 믹스' : '') + '): Downloads/PhraseNote/' + projectName;
+
     try {
       if (isAndroidBridge()){
         if (!window.AndroidBridge.hasFolder()){ await chooseProjectLocation(); }
-        for (var i = 0; i < selectedTracks.length; i++){
-          var t = selectedTracks[i];
-          var blob = t.type === 'audio' ? audioBufferToWav(padAudioBufferForExport(t.buffer, t.offset)) : buildMidiFile(shiftedTrackForExport(t), bpm);
-          var b64 = await blobToBase64(blob);
-          var result = window.AndroidBridge.saveFile(b64, projectName + '/' + projectFilePrefix(i, t));
+        for (var i = 0; i < files.length; i++){
+          var b64 = await blobToBase64(files[i].blob);
+          var result = window.AndroidBridge.saveFile(b64, projectName + '/' + files[i].name);
           if (result !== 'OK') throw new Error('네이티브 저장 실패: ' + result);
         }
-        var metaBlob = new Blob([buildProjectMeta(projectName)], { type:'application/json' });
-        var metaB64 = await blobToBase64(metaBlob);
-        window.AndroidBridge.saveFile(metaB64, projectName + '/project.json');
-        status.textContent = '저장 완료(' + selectedTracks.length + '개 트랙): Downloads/PhraseNote/' + projectName;
+        status.textContent = doneMsg;
         return;
       }
       var dir = await getProjectFolder();
-      for (var j = 0; j < selectedTracks.length; j++){
-        var t2 = selectedTracks[j];
-        var blob2 = t2.type === 'audio' ? audioBufferToWav(padAudioBufferForExport(t2.buffer, t2.offset)) : buildMidiFile(shiftedTrackForExport(t2), bpm);
-        await writeFileToDir(dir, projectFilePrefix(j, t2), blob2);
+      for (var j = 0; j < files.length; j++){
+        await writeFileToDir(dir, files[j].name, files[j].blob);
       }
-      await writeFileToDir(dir, 'project.json', new Blob([buildProjectMeta(projectName)], {type:'application/json'}));
-      status.textContent = '저장 완료(' + selectedTracks.length + '개 트랙): Downloads/PhraseNote/' + projectName;
+      status.textContent = doneMsg;
     } catch(e){
       if (e && e.name === 'AbortError') return;
+      if (e && (e.name === 'InvalidStateError' || e.name === 'NoModificationAllowedError')){
+        projectDirectoryHandle = null;
+        await clearHandleFromDb();
+        updateProjectLocationText();
+        downloadFilesAsFallback(files.filter(function(f){ return f.name !== 'project.json'; }));
+        status.textContent = '폴더 저장이 막혀서 일반 다운로드로 대신 저장했어요. 다음 저장 때 위치를 다시 골라주세요.';
+        return;
+      }
       if (e && e.message === 'DIRECTORY_PICKER_UNSUPPORTED'){
-        status.textContent = '이 브라우저에서는 폴더 직접 저장을 지원하지 않아요. Chrome/Edge PC에서 사용해주세요.';
-        alert('현재 브라우저에서는 웹페이지가 Download 폴더 안에 폴더를 직접 만들 수 없습니다. Chrome/Edge의 지원 브라우저에서 "폴더 직접 저장"을 사용할 수 있어요.');
+        downloadFilesAsFallback(files.filter(function(f){ return f.name !== 'project.json'; }));
+        status.textContent = '이 브라우저는 폴더 저장을 지원하지 않아서 일반 다운로드로 저장했어요.';
       } else {
         console.error(e);
         status.textContent = '프로젝트 저장에 실패했어요.';
         alert('프로젝트 저장에 실패했어요: ' + (e.message || e));
       }
     }
+  }
+
+  /* ============ 작업 자동 보관 (브라우저 내부 IndexedDB) ============
+     녹음이 끝날 때마다 트랙을 보관해두고, 탭이 종료됐다 다시 열려도 복구함 */
+  var SESSION_DB = 'phrasenote-session', SESSION_STORE = 'kv';
+  var sessionDbPromise = null;
+  function openSessionDB(){
+    if (sessionDbPromise) return sessionDbPromise;
+    sessionDbPromise = new Promise(function(res, rej){
+      var r = indexedDB.open(SESSION_DB, 1);
+      r.onupgradeneeded = function(){ r.result.createObjectStore(SESSION_STORE); };
+      r.onsuccess = function(){ res(r.result); };
+      r.onerror = function(){ rej(r.error); };
+    });
+    return sessionDbPromise;
+  }
+  function sessionTx(mode, fn){
+    return openSessionDB().then(function(db){
+      return new Promise(function(res, rej){
+        var tx = db.transaction(SESSION_STORE, mode);
+        var out = fn(tx.objectStore(SESSION_STORE));
+        tx.oncomplete = function(){ res(out && out.result !== undefined ? out.result : undefined); };
+        tx.onerror = function(){ rej(tx.error); };
+      });
+    }).catch(function(e){ console.warn('자동 보관 오류:', e); });
+  }
+  function sessionPut(key, val){ return sessionTx('readwrite', function(st){ st.put(val, key); }); }
+  function sessionDelete(key){ return sessionTx('readwrite', function(st){ st.delete(key); }); }
+  function sessionClear(){ return sessionTx('readwrite', function(st){ st.clear(); }); }
+  function trackToRecord(t){
+    var rec = { id:t.id, type:t.type, name:t.name, offset:t.offset, duration:t.duration };
+    if (t.type === 'audio'){
+      rec.sampleRate = t.buffer.sampleRate;
+      rec.channels = [];
+      for (var c = 0; c < t.buffer.numberOfChannels; c++) rec.channels.push(t.buffer.getChannelData(c));
+    } else {
+      rec.notes = t.notes;
+    }
+    return rec;
+  }
+  function saveTrackToSession(t){ sessionPut('track:' + t.id, trackToRecord(t)); saveSessionMeta(); }
+  var metaSaveTimer = null;
+  function saveSessionMeta(){
+    clearTimeout(metaSaveTimer);
+    metaSaveTimer = setTimeout(function(){
+      sessionPut('meta', {
+        bpm:bpm, beatsPerBar:beatsPerBar, noteValue:noteValue, trackIdSeq:trackIdSeq,
+        tracks: tracks.map(function(t){ return { id:t.id, name:t.name, muted:t.muted, solo:t.solo, volume:t.volume, selected:t.selected }; })
+      });
+    }, 300);
+  }
+  function makeAudioBuffer(channels, sampleRate){
+    var len = channels[0].length, buf;
+    try { buf = new AudioBuffer({ length:len, numberOfChannels:channels.length, sampleRate:sampleRate }); }
+    catch(e){ initAudio(); buf = audioCtx.createBuffer(channels.length, len, sampleRate); }
+    channels.forEach(function(ch, i){ buf.getChannelData(i).set(ch); });
+    return buf;
+  }
+  function restoreSession(){
+    return openSessionDB().then(function(db){
+      return new Promise(function(res){
+        var tx = db.transaction(SESSION_STORE, 'readonly'), st = tx.objectStore(SESSION_STORE);
+        var keysReq = st.getAllKeys(), valsReq = st.getAll();
+        tx.oncomplete = function(){ res({ keys: keysReq.result || [], vals: valsReq.result || [] }); };
+        tx.onerror = function(){ res({ keys:[], vals:[] }); };
+      });
+    }).then(function(data){
+      var meta = null, recs = {};
+      data.keys.forEach(function(k, i){
+        if (k === 'meta') meta = data.vals[i];
+        else if (String(k).indexOf('track:') === 0) recs[data.vals[i].id] = data.vals[i];
+      });
+      if (!meta) return;
+      bpm = meta.bpm || bpm; beatsPerBar = meta.beatsPerBar || beatsPerBar; noteValue = meta.noteValue || noteValue;
+      document.getElementById('bpmInput').value = bpm;
+      document.getElementById('beatsSelect').value = String(beatsPerBar);
+      document.getElementById('noteValueSelect').value = String(noteValue);
+      var restored = [];
+      (meta.tracks || []).forEach(function(m){
+        var r = recs[m.id]; if (!r) return;
+        var t = { id:r.id, type:r.type, name:m.name || r.name, offset:r.offset || 0, duration:r.duration,
+                  muted:!!m.muted, solo:!!m.solo, volume:(m.volume == null ? 1 : m.volume), selected:m.selected !== false };
+        if (r.type === 'audio') t.buffer = makeAudioBuffer(r.channels, r.sampleRate); else t.notes = r.notes;
+        restored.push(t);
+      });
+      tracks = restored;
+      var maxId = 0; tracks.forEach(function(t){ if (t.id > maxId) maxId = t.id; });
+      trackIdSeq = Math.max(meta.trackIdSeq || 1, maxId + 1);
+      updateDefaultProjectName();
+      renderTimeline();
+      updateTransportUI();
+      if (tracks.length) document.getElementById('projectStatus').textContent = '이전 작업(트랙 ' + tracks.length + '개)을 복구했어요.';
+    }).catch(function(e){ console.warn('복구 실패:', e); });
+  }
+  function newSession(){
+    if (tracks.length && !confirm('지금 트랙을 모두 지우고 새로 시작할까요? (저장하지 않은 녹음은 사라져요)')) return;
+    if (isRecording) stopRecording();
+    if (isPlaying) stopAll();
+    tracks = []; trackIdSeq = 1; playheadSeconds = 0;
+    sessionClear();
+    projectNameAuto = true; updateDefaultProjectName();
+    renderTimeline(); updateTransportUI();
+    document.getElementById('projectStatus').textContent = '새 세션을 시작했어요.';
   }
 
   /* ============ virtual keyboard (2 octaves, 2 rows, real-piano layout) ============ */
@@ -1463,7 +1715,7 @@
     var nodes = startLiveNote(n.freq);
     nodes.midi = n.midi;
     if (isRecording && recordingType === 'midi'){
-      nodes.recStart = Math.max(0, audioCtx.currentTime - recordStartCtxTime);
+      nodes.recStart = Math.max(0, audioCtx.currentTime - recordStartCtxTime - outputLatencySec());
     }
     activeNoteOns[n.name] = nodes;
     var el = document.querySelector('.pkey[data-note="' + n.name + '"]');
@@ -1474,7 +1726,7 @@
     if (!nodes) return;
     stopLiveNote(nodes);
     if (isRecording && recordingType === 'midi' && nodes.recStart != null){
-      var offT = Math.max(nodes.recStart + 0.05, audioCtx.currentTime - recordStartCtxTime);
+      var offT = Math.max(nodes.recStart + 0.05, audioCtx.currentTime - recordStartCtxTime - outputLatencySec());
       tempMidiNotes.push({ freq: nodes.freq, midi: nodes.midi, on: nodes.recStart, off: offT });
     }
     delete activeNoteOns[name];
@@ -1555,14 +1807,26 @@
     bpm = Math.max(30, Math.min(260, v));
     updateDefaultProjectName();
     renderTimeline();
+    saveSessionMeta();
   });
-  document.getElementById('beatsSelect').addEventListener('change', function(e){ beatsPerBar = parseInt(e.target.value, 10); renderTimeline(); });
-  document.getElementById('noteValueSelect').addEventListener('change', function(e){ noteValue = parseInt(e.target.value, 10); renderTimeline(); });
+  document.getElementById('beatsSelect').addEventListener('change', function(e){ beatsPerBar = parseInt(e.target.value, 10); renderTimeline(); saveSessionMeta(); });
+  document.getElementById('noteValueSelect').addEventListener('change', function(e){ noteValue = parseInt(e.target.value, 10); renderTimeline(); saveSessionMeta(); });
+  try { syncOffsetMs = parseFloat(localStorage.getItem('pn-sync-ms')) || 0; } catch(e){}
+  document.getElementById('syncOffsetInput').value = syncOffsetMs;
+  document.getElementById('syncOffsetInput').addEventListener('change', function(e){
+    syncOffsetMs = Math.max(-500, Math.min(500, parseFloat(e.target.value) || 0));
+    e.target.value = syncOffsetMs;
+    try { localStorage.setItem('pn-sync-ms', String(syncOffsetMs)); } catch(err){}
+  });
+  document.getElementById('mixToggle').addEventListener('change', function(e){ document.getElementById('mixChip').classList.toggle('on', e.target.checked); });
+  document.getElementById('newSessionBtn').addEventListener('click', newSession);
   document.getElementById('metronomeSoundSelect').addEventListener('change', function(e){ metronomeSound = e.target.value; });
   document.getElementById('metroToggleBtn').classList.toggle('active', metronomeDuringPlayback);
   document.getElementById('metroToggleBtn').addEventListener('click', function(){
     metronomeDuringPlayback = !metronomeDuringPlayback;
     this.classList.toggle('active', metronomeDuringPlayback);
+    // 이미 예약된 클릭까지 즉시 끊기/살리기 위해 게인도 바로 조절
+    if (metronomeGain) metronomeGain.gain.value = metronomeDuringPlayback ? 0.55 : 0;
   });
   document.getElementById('metronomeStandaloneBtn').addEventListener('click', function(){
     if (metronomeStandaloneRunning) stopMetronomeStandalone(); else startMetronomeStandalone();
@@ -1581,8 +1845,8 @@
   document.getElementById('playBtn').addEventListener('click', function(){ initAudio(); audioCtx.resume(); playAll(); });
   document.getElementById('stopBtn').addEventListener('click', function(){ if (isRecording) stopRecording(); if (isPlaying) stopAll(); });
   document.getElementById('rewindBtn').addEventListener('click', function(){ seekTo(0); });
-  document.getElementById('selectAllTracksBtn').addEventListener('click', function(){ tracks.forEach(function(t){ t.selected = true; }); renderTimeline(); });
-  document.getElementById('selectNoneTracksBtn').addEventListener('click', function(){ tracks.forEach(function(t){ t.selected = false; }); renderTimeline(); });
+  document.getElementById('selectAllTracksBtn').addEventListener('click', function(){ tracks.forEach(function(t){ t.selected = true; }); renderTimeline(); saveSessionMeta(); });
+  document.getElementById('selectNoneTracksBtn').addEventListener('click', function(){ tracks.forEach(function(t){ t.selected = false; }); renderTimeline(); saveSessionMeta(); });
   document.getElementById('projectNameInput').addEventListener('input', function(){ projectNameAuto = false; });
   document.getElementById('projectNameInput').addEventListener('blur', function(e){
     if (!e.target.value.trim()){ projectNameAuto = true; updateDefaultProjectName(); }
@@ -1657,6 +1921,7 @@
   initMidiInput();
   renderTimeline();
   updateTransportUI();
+  restoreSession();
 })();
 </script>
 </body>
