@@ -1455,23 +1455,32 @@
     }
   }
   async function writeFileToDir(dir, filename, blob){
+    // 안드로이드 브라우저에서는 Blob을 그대로 쓰면 0바이트 파일만 만들어지는 경우가 있어서,
+    // ArrayBuffer로 먼저 시도하고 실패하면 Blob으로 한 번 더 시도한다. 쓴 뒤 크기도 확인.
+    var data = await blob.arrayBuffer();
+    var lastErr = null;
     for (var attempt = 0; attempt < 2; attempt++){
+      var handle = null;
       try {
-        var handle = await dir.getFileHandle(filename, { create:true });
+        handle = await dir.getFileHandle(filename, { create:true });
         var writable = await handle.createWritable({ keepExistingData:false });
-        await writable.write(blob);
+        await writable.write(attempt === 0 ? data : blob);
         await writable.close();
+        var written = await handle.getFile();
+        if (data.byteLength > 0 && written.size === 0){
+          var err = new Error('빈 파일이 만들어졌어요');
+          err.name = 'InvalidStateError';
+          throw err;
+        }
         return;
       } catch (e){
-        // 같은 이름 파일이 이미 있거나 캐시된 파일 상태가 어긋난 경우: 지우고 한 번 더 시도
-        if (attempt === 0 && e && (e.name === 'InvalidStateError' || e.name === 'NoModificationAllowedError')){
-          try { await dir.removeEntry(filename); } catch(_){}
-          continue;
-        }
-        throw e;
+        lastErr = e;
+        try { await dir.removeEntry(filename); } catch(_){}   // 0바이트 찌꺼기 정리
       }
     }
+    throw lastErr;
   }
+
   function downloadFilesAsFallback(files){
     files.forEach(function(f, i){ setTimeout(function(){ downloadBlob(f.blob, f.name); }, i * 400); });
   }
@@ -1527,7 +1536,7 @@
         await clearHandleFromDb();
         updateProjectLocationText();
         downloadFilesAsFallback(files.filter(function(f){ return f.name !== 'project.json'; }));
-        status.textContent = '폴더 저장이 막혀서 일반 다운로드로 대신 저장했어요. 다음 저장 때 위치를 다시 골라주세요.';
+        status.textContent = '이 브라우저에서는 지정한 폴더에 파일을 쓸 수 없어서(빈 파일만 생성됨) 다운로드 폴더에 저장했어요.';
         return;
       }
       if (e && e.message === 'DIRECTORY_PICKER_UNSUPPORTED'){
