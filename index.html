@@ -55,9 +55,6 @@
     border-radius:14px; padding:7px 10px; font-size:14px; width:100%; min-width:0;
   }
   .project-save-btn{ flex:0 0 auto; width:auto; min-width:52px; margin:0; white-space:nowrap; border:1px solid var(--blue); background:var(--blue); color:#fff; border-radius:999px; padding:7px 12px; font-size:12.5px; font-weight:700; box-shadow:0 2px 6px rgba(48,117,105,.08); }
-  .project-location-row{ margin-top:7px; display:flex; align-items:center; gap:8px; }
-  .project-location{ flex:1; min-width:0; font-size:11px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .project-location-btn{ flex:0 0 auto; border:1px solid var(--line); background:var(--panel-2); color:var(--text); border-radius:999px; padding:6px 10px; font-size:11.5px; font-weight:600; white-space:nowrap; }
   .project-status{ margin-top:5px; font-size:10.5px; color:var(--text-dim); line-height:1.35; }
   .field{ display:flex; flex-direction:column; gap:4px; flex:1; }
   .field label{ font-size:11px; color:var(--text-dim); }
@@ -322,10 +319,6 @@
       </div>
       <button class="project-save-btn" id="saveProjectBtn">저장</button>
     </div>
-    <div class="project-location-row">
-      <div class="project-location" id="projectLocation">저장 위치: 미지정</div>
-      <button class="project-location-btn" id="chooseProjectLocationBtn">📁 위치 설정</button>
-    </div>
     <div class="row" style="margin-top:8px;">
       <button class="mini-btn" id="selectAllTracksBtn">전체 선택</button>
       <button class="mini-btn" id="selectNoneTracksBtn">전체 해제</button>
@@ -337,7 +330,7 @@
       <div style="flex:1"></div>
       <button class="mini-btn" id="newSessionBtn">새로 시작</button>
     </div>
-    <div id="projectStatus" class="project-status">프로젝트 저장 시 선택한 위치에 PhraseNote 폴더가 만들어집니다.</div>
+    <div id="projectStatus" class="project-status">저장을 누르면 다운로드 폴더에 파일이 저장돼요.</div>
   </section>
 
   <footer>헤드폰 사용을 권장해요 · 마이크가 메트로놈 소리를 함께 녹음할 수 있어요</footer>
@@ -366,7 +359,6 @@
   var tempMidiNotes = [];
   var activeNoteOns = {};
   var playStopTimer = null;
-  var projectDirectoryHandle = null;
   var projectBaseName = 'PhraseNote';
   var noiseBuffer = null;
 
@@ -1282,12 +1274,7 @@
       : buildMidiFile(shiftedTrackForExport(t), bpm);
   }
   function exportTrack(t){
-    var name = fileNamePrefix() + '_' + trackNum(t);
-    if (t.type === 'audio'){
-      downloadBlob(audioBufferToWav(padAudioBufferForExport(t.buffer, t.offset)), name + '.wav');
-      return;
-    }
-    downloadBlob(buildMidiFile(shiftedTrackForExport(t), bpm), name + '.mid');
+    downloadBlob(trackExportBlob(t), projectFilePrefix(0, t));
   }
 
   /* 선택된 트랙들을 타임라인 위치 그대로 한 파일로 합침 (뮤트된 트랙은 제외) */
@@ -1315,11 +1302,18 @@
   function sanitizeFileName(name){
     return String(name || '').trim().replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').slice(0, 80) || '새 프로젝트';
   }
+  function projectBase(){
+    return sanitizeFileName(document.getElementById('projectNameInput').value || fileNamePrefix());
+  }
+  /* 같은 종류끼리 1,2,3… 번호를 매겨 Audio1 / MIDI2 처럼 구분 */
+  function trackLabel(track){
+    var same = tracks.filter(function(x){ return x.type === track.type; });
+    var n = same.indexOf(track) + 1;
+    if (n < 1) n = 1;
+    return (track.type === 'audio' ? 'Audio' : 'MIDI') + n;
+  }
   function projectFilePrefix(index, track){
-    var type = track.type === 'audio' ? 'wav' : 'mid';
-    var num = trackNum(track);
-    var base = sanitizeFileName(document.getElementById('projectNameInput').value || fileNamePrefix());
-    return base + '_' + num + '.' + type;
+    return projectBase() + '_' + trackLabel(track) + (track.type === 'audio' ? '.wav' : '.mid');
   }
   function buildProjectMeta(projectName){
     return JSON.stringify({
@@ -1331,223 +1325,31 @@
       noteValue: noteValue,
       createdAt: new Date().toISOString(),
       tracks: tracks.map(function(t, i){
-        return { id:t.id, name:t.name, type:t.type, offset:t.offset, duration:t.duration, volume:t.volume, muted:t.muted, solo:t.solo, file:projectFilePrefix(i,t) };
+        return { id:t.id, label:trackLabel(t), name:t.name, type:t.type, offset:t.offset, duration:t.duration, volume:t.volume, muted:t.muted, solo:t.solo };
       })
     }, null, 2);
   }
-  function isAndroidBridge(){ return typeof window.AndroidBridge !== 'undefined' && window.AndroidBridge !== null; }
-
-  /* ---- 저장 위치 기억하기 (IndexedDB에 FileSystemDirectoryHandle 저장) ----
-     세션이 바뀌어도 폴더를 통째로 다시 고를 필요는 없어짐. 다만 브라우저 보안 정책상
-     권한(permission) 자체는 세션 간 자동 유지가 안 돼서, 저장 버튼을 누르는 순간(=사용자 제스처)에
-     한 번 재확인(request) 하도록 처리함 — 그래도 폴더 선택창 전체가 다시 뜨는 것보단 훨씬 가벼움. */
-  var HANDLE_DB_NAME = 'phrasenote-fs', HANDLE_STORE = 'handles', HANDLE_KEY = 'projectDir';
-  function openHandleDB(){
-    return new Promise(function(resolve, reject){
-      var req = indexedDB.open(HANDLE_DB_NAME, 1);
-      req.onupgradeneeded = function(){ req.result.createObjectStore(HANDLE_STORE); };
-      req.onsuccess = function(){ resolve(req.result); };
-      req.onerror = function(){ reject(req.error); };
-    });
-  }
-  function saveHandleToDb(handle){
-    return openHandleDB().then(function(db){
-      return new Promise(function(resolve, reject){
-        var tx = db.transaction(HANDLE_STORE, 'readwrite');
-        tx.objectStore(HANDLE_STORE).put(handle, HANDLE_KEY);
-        tx.oncomplete = function(){ resolve(); };
-        tx.onerror = function(){ reject(tx.error); };
-      });
-    }).catch(function(err){ console.warn('저장 위치 기억 실패:', err); });
-  }
-  function loadHandleFromDb(){
-    return openHandleDB().then(function(db){
-      return new Promise(function(resolve, reject){
-        var tx = db.transaction(HANDLE_STORE, 'readonly');
-        var req = tx.objectStore(HANDLE_STORE).get(HANDLE_KEY);
-        req.onsuccess = function(){ resolve(req.result || null); };
-        req.onerror = function(){ reject(req.error); };
-      });
-    }).catch(function(){ return null; });
-  }
-  function clearHandleFromDb(){
-    return openHandleDB().then(function(db){
-      var tx = db.transaction(HANDLE_STORE, 'readwrite');
-      tx.objectStore(HANDLE_STORE).delete(HANDLE_KEY);
-    }).catch(function(){});
-  }
-  function ensureHandlePermission(handle){
-    return handle.queryPermission({ mode:'readwrite' }).then(function(state){
-      if (state === 'granted') return true;
-      return handle.requestPermission({ mode:'readwrite' }).then(function(state2){
-        return state2 === 'granted';
-      });
-    }).catch(function(){ return false; });
+  function downloadFiles(files){
+    files.forEach(function(f, i){ setTimeout(function(){ downloadBlob(f.blob, f.name); }, i * 500); });
   }
 
-  function updateProjectLocationText(){
-    var el = document.getElementById('projectLocation');
-    if (!el) return;
-    if (isAndroidBridge()){
-      var has = window.AndroidBridge.hasFolder();
-      el.textContent = has ? ('저장 위치: ' + (window.AndroidBridge.currentFolderName() || '선택한 폴더') + ' / PhraseNote') : '저장 위치: 미지정';
-      return;
-    }
-    if (!projectDirectoryHandle){
-      el.textContent = '저장 위치: 미지정';
-      return;
-    }
-    el.textContent = '저장 위치: ' + (projectDirectoryHandle.name || '선택한 폴더') + ' / PhraseNote';
-  }
-  function chooseProjectLocation(){
-    if (isAndroidBridge()){
-      return new Promise(function(resolve, reject){
-        window.AndroidBridge_onFolderResult = function(name){
-          window.AndroidBridge_onFolderResult = null;
-          if (name){
-            updateProjectLocationText();
-            document.getElementById('projectStatus').textContent = '저장 위치가 설정되었습니다. 프로젝트 저장 시 이 위치를 사용합니다.';
-            resolve();
-          } else {
-            var err = new Error('폴더 선택이 취소됐어요.'); err.name = 'AbortError';
-            reject(err);
-          }
-        };
-        window.AndroidBridge.chooseFolder();
-      });
-    }
-    if (!window.showDirectoryPicker) return Promise.reject(new Error('DIRECTORY_PICKER_UNSUPPORTED'));
-    return window.showDirectoryPicker({ mode:'readwrite', startIn:'downloads' }).then(function(handle){
-      projectDirectoryHandle = handle;
-      updateProjectLocationText();
-      document.getElementById('projectStatus').textContent = '저장 위치가 설정되었습니다. 프로젝트 저장 시 이 위치를 사용합니다.';
-      saveHandleToDb(handle);
-    });
-  }
-  async function getProjectFolder(){
-    if (!window.showDirectoryPicker) throw new Error('DIRECTORY_PICKER_UNSUPPORTED');
-    if (!projectDirectoryHandle){
-      await chooseProjectLocation();
-    } else {
-      var ok = await ensureHandlePermission(projectDirectoryHandle);
-      if (!ok){
-        projectDirectoryHandle = null;
-        await clearHandleFromDb();
-        await chooseProjectLocation();
-      }
-    }
-    try {
-      var phraseNoteDir = await projectDirectoryHandle.getDirectoryHandle('PhraseNote', { create:true });
-      var name = sanitizeFileName(document.getElementById('projectNameInput').value);
-      document.getElementById('projectNameInput').value = name;
-      return await phraseNoteDir.getDirectoryHandle(name, { create:true });
-    } catch (e){
-      // 이전 세션에서 기억해둔 폴더 핸들이 낡아져서(디스크 상태와 어긋나서) 못 쓰는 경우.
-      // 캐시를 지우고 폴더를 한 번만 다시 고르게 해서 자동 복구를 시도함.
-      console.warn('저장 위치 핸들이 낡아서 다시 선택합니다:', e);
-      projectDirectoryHandle = null;
-      await clearHandleFromDb();
-      await chooseProjectLocation();
-      var phraseNoteDir2 = await projectDirectoryHandle.getDirectoryHandle('PhraseNote', { create:true });
-      var name2 = sanitizeFileName(document.getElementById('projectNameInput').value);
-      document.getElementById('projectNameInput').value = name2;
-      return await phraseNoteDir2.getDirectoryHandle(name2, { create:true });
-    }
-  }
-  async function writeFileToDir(dir, filename, blob){
-    // 안드로이드 브라우저에서는 Blob을 그대로 쓰면 0바이트 파일만 만들어지는 경우가 있어서,
-    // ArrayBuffer로 먼저 시도하고 실패하면 Blob으로 한 번 더 시도한다. 쓴 뒤 크기도 확인.
-    var data = await blob.arrayBuffer();
-    var lastErr = null;
-    for (var attempt = 0; attempt < 2; attempt++){
-      var handle = null;
-      try {
-        handle = await dir.getFileHandle(filename, { create:true });
-        var writable = await handle.createWritable({ keepExistingData:false });
-        await writable.write(attempt === 0 ? data : blob);
-        await writable.close();
-        var written = await handle.getFile();
-        if (data.byteLength > 0 && written.size === 0){
-          var err = new Error('빈 파일이 만들어졌어요');
-          err.name = 'InvalidStateError';
-          throw err;
-        }
-        return;
-      } catch (e){
-        lastErr = e;
-        try { await dir.removeEntry(filename); } catch(_){}   // 0바이트 찌꺼기 정리
-      }
-    }
-    throw lastErr;
-  }
-
-  function downloadFilesAsFallback(files){
-    files.forEach(function(f, i){ setTimeout(function(){ downloadBlob(f.blob, f.name); }, i * 400); });
-  }
-  function blobToBase64(blob){
-    return new Promise(function(resolve, reject){
-      var reader = new FileReader();
-      reader.onloadend = function(){
-        var result = reader.result;
-        var idx = result.indexOf(',');
-        resolve(idx >= 0 ? result.slice(idx + 1) : result);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  }
   async function saveProject(){
     var selectedTracks = tracks.filter(function(t){ return t.selected !== false; });
     if (selectedTracks.length === 0){ alert('저장할 트랙이 없어요. 트랙을 체크하거나 먼저 녹음해주세요.'); return; }
     var status = document.getElementById('projectStatus');
-    var projectName = sanitizeFileName(document.getElementById('projectNameInput').value);
+    var projectName = projectBase();
     document.getElementById('projectNameInput').value = projectName;
 
-    // 저장할 파일 목록을 먼저 만들어두고, 저장 경로(안드로이드/폴더/다운로드)만 바꿔 씀
     var files = selectedTracks.map(function(t, i){ return { name: projectFilePrefix(i, t), blob: trackExportBlob(t) }; });
     if (document.getElementById('mixToggle').checked && selectedTracks.length > 1){
       status.textContent = '믹스 파일 만드는 중…';
-      var mixBlob = await renderMixBlob(selectedTracks);
-      if (mixBlob) files.push({ name: projectName + '_mix.wav', blob: mixBlob });
+      try {
+        var mixBlob = await renderMixBlob(selectedTracks);
+        if (mixBlob) files.push({ name: projectName + '_Mix.wav', blob: mixBlob });
+      } catch(e){ console.warn('믹스 실패:', e); }
     }
-    files.push({ name: 'project.json', blob: new Blob([buildProjectMeta(projectName)], { type:'application/json' }) });
-    var doneMsg = '저장 완료(' + selectedTracks.length + '개 트랙' + (files.length > selectedTracks.length + 1 ? ' + 믹스' : '') + '): Downloads/PhraseNote/' + projectName;
-
-    try {
-      if (isAndroidBridge()){
-        if (!window.AndroidBridge.hasFolder()){ await chooseProjectLocation(); }
-        for (var i = 0; i < files.length; i++){
-          var b64 = await blobToBase64(files[i].blob);
-          var result = window.AndroidBridge.saveFile(b64, projectName + '/' + files[i].name);
-          if (result !== 'OK') throw new Error('네이티브 저장 실패: ' + result);
-        }
-        status.textContent = doneMsg;
-        return;
-      }
-      var dir = await getProjectFolder();
-      for (var j = 0; j < files.length; j++){
-        await writeFileToDir(dir, files[j].name, files[j].blob);
-      }
-      status.textContent = doneMsg;
-    } catch(e){
-      if (e && e.name === 'AbortError') return;
-      if (e && (e.name === 'InvalidStateError' || e.name === 'NoModificationAllowedError')){
-        projectDirectoryHandle = null;
-        await clearHandleFromDb();
-        updateProjectLocationText();
-        downloadFilesAsFallback(files.filter(function(f){ return f.name !== 'project.json'; }));
-        status.textContent = '이 브라우저에서는 지정한 폴더에 파일을 쓸 수 없어서(빈 파일만 생성됨) 다운로드 폴더에 저장했어요.';
-        return;
-      }
-      if (e && e.message === 'DIRECTORY_PICKER_UNSUPPORTED'){
-        downloadFilesAsFallback(files.filter(function(f){ return f.name !== 'project.json'; }));
-        status.textContent = '이 브라우저는 폴더 저장을 지원하지 않아서 일반 다운로드로 저장했어요.';
-      } else {
-        console.error(e);
-        status.textContent = '프로젝트 저장에 실패했어요.';
-        alert('프로젝트 저장에 실패했어요: ' + (e.message || e));
-      }
-    }
+    downloadFiles(files);
+    status.textContent = files.length + '개 파일을 다운로드 폴더에 저장했어요. (' + projectName + '_…)';
   }
 
   /* ============ 작업 자동 보관 (브라우저 내부 IndexedDB) ============
@@ -1861,20 +1663,6 @@
     if (!e.target.value.trim()){ projectNameAuto = true; updateDefaultProjectName(); }
   });
   document.getElementById('saveProjectBtn').addEventListener('click', saveProject);
-  document.getElementById('chooseProjectLocationBtn').addEventListener('click', async function(){
-    try {
-      await chooseProjectLocation();
-    } catch(e){
-      if (e && e.name === 'AbortError') return;
-      if (e && e.message === 'DIRECTORY_PICKER_UNSUPPORTED'){
-        document.getElementById('projectStatus').textContent = '이 브라우저에서는 폴더 직접 저장을 지원하지 않아요. Chrome/Edge PC에서 사용해주세요.';
-        alert('현재 브라우저에서는 저장 위치를 직접 선택할 수 없습니다. Chrome/Edge PC의 지원 브라우저에서 사용해주세요.');
-      } else {
-        console.error(e);
-        alert('저장 위치 설정에 실패했어요: ' + (e.message || e));
-      }
-    }
-  });
   document.getElementById('kbRecBtn').addEventListener('click', function(){ if (isRecording) stopRecording(); else startRecording('midi'); });
   document.getElementById('kbPlayBtn').addEventListener('click', function(){ if (isPlaying) stopAll(); else playAll(); });
   document.getElementById('kbStopBtn').addEventListener('click', function(){ if (isRecording) stopRecording(); if (isPlaying) stopAll(); });
@@ -1912,20 +1700,6 @@
   pxPerSec = defaultPxPerSec();
 
   updateDefaultProjectName();
-  updateProjectLocationText();
-  if (!isAndroidBridge()){
-    loadHandleFromDb().then(function(handle){
-      if (!handle) return;
-      projectDirectoryHandle = handle;
-      updateProjectLocationText();
-      handle.queryPermission({ mode:'readwrite' }).then(function(state){
-        if (state !== 'granted'){
-          var el = document.getElementById('projectLocation');
-          if (el) el.textContent += ' (저장 시 권한 재확인)';
-        }
-      }).catch(function(){});
-    });
-  }
   buildPiano();
   initMidiInput();
   renderTimeline();
