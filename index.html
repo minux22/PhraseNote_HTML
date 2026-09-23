@@ -226,8 +226,8 @@
       </select>
     </div>
     <div class="master-vol">
-      <label style="font-size:11px;color:var(--text-dim)">마스터 볼륨</label>
-      <input type="range" id="masterVol" min="0" max="1" step="0.01" value="0.9">
+      <label style="font-size:11px;color:var(--text-dim)">마스터 볼륨(듣기 전용 · 저장 파일에는 영향 없음) <span id="masterVolValue">1.0x</span></label>
+      <input type="range" id="masterVol" min="0" max="4" step="0.05" value="1">
     </div>
     <div id="status-line" style="display:none">대기 중</div>
   </section>
@@ -341,7 +341,7 @@
   'use strict';
 
   /* ============ state ============ */
-  var audioCtx = null, masterGain = null, metronomeGain = null;
+  var audioCtx = null, masterGain = null, metronomeGain = null, outputLimiter = null;
   var micStream = null, mediaRecorder = null, recordedChunks = [];
   var micSourceNode = null, analyser = null, liveWaveRAF = null;
   var tracks = []; var trackIdSeq = 1;
@@ -366,12 +366,21 @@
   function initAudio(){
     if (audioCtx) return;
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // 듣기 경로에만 쓰는 안전장치(리미터). 볼륨을 키워도 찌그러지지 않게 눌러줌.
+    // 저장 파일은 이 경로를 거치지 않으므로 원본 그대로 유지됨.
+    outputLimiter = audioCtx.createDynamicsCompressor();
+    outputLimiter.threshold.value = -1.5;
+    outputLimiter.knee.value = 0;
+    outputLimiter.ratio.value = 20;
+    outputLimiter.attack.value = 0.003;
+    outputLimiter.release.value = 0.12;
+    outputLimiter.connect(audioCtx.destination);
     masterGain = audioCtx.createGain();
     masterGain.gain.value = parseFloat(document.getElementById('masterVol').value);
-    masterGain.connect(audioCtx.destination);
+    masterGain.connect(outputLimiter);
     metronomeGain = audioCtx.createGain();
     metronomeGain.gain.value = metronomeDuringPlayback ? 0.55 : 0;
-    metronomeGain.connect(audioCtx.destination);
+    metronomeGain.connect(outputLimiter);
     var len = Math.floor(audioCtx.sampleRate * 0.3);
     noiseBuffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
     var data = noiseBuffer.getChannelData(0);
@@ -1646,9 +1655,20 @@
     countInEnabled = e.target.checked;
     document.getElementById('countinChip').classList.toggle('on', countInEnabled);
   });
-  document.getElementById('masterVol').addEventListener('input', function(e){
-    if (masterGain) masterGain.gain.value = parseFloat(e.target.value);
-  });
+  function applyMasterVol(v){
+    v = Math.max(0, Math.min(4, v));
+    if (masterGain) masterGain.gain.setTargetAtTime(v, audioCtx.currentTime, 0.02);
+    document.getElementById('masterVolValue').textContent = v.toFixed(1) + 'x';
+    try { localStorage.setItem('pn-master-vol', String(v)); } catch(e){}
+  }
+  document.getElementById('masterVol').addEventListener('input', function(e){ applyMasterVol(parseFloat(e.target.value)); });
+  (function(){
+    var saved = null;
+    try { saved = parseFloat(localStorage.getItem('pn-master-vol')); } catch(e){}
+    var v = (saved != null && !isNaN(saved)) ? saved : 1;
+    document.getElementById('masterVol').value = v;
+    document.getElementById('masterVolValue').textContent = v.toFixed(1) + 'x';
+  })();
   document.getElementById('countinChip').classList.add('on');
 
   document.getElementById('recAudioBtn').addEventListener('click', function(){ startRecording('audio'); });
