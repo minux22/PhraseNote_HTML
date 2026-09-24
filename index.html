@@ -139,10 +139,13 @@
   .tl-ctrl-row input[type=range]{ width:100%; height:10px; margin:0; accent-color:var(--sky); }
   .tl-scroll{ flex:1; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; }
   .tl-content{ position:relative; }
-  .tl-ruler{ display:block; border-bottom:1px solid var(--line); }
+  .tl-ruler{ display:block; cursor:pointer; border-bottom:1px solid var(--line); }
   .tl-lane{ height:var(--lane-h); box-sizing:border-box; border-bottom:1px solid var(--line); position:relative; cursor:pointer; }
   .tl-lane canvas{ display:block; position:absolute; top:0; left:0; }
   #tlPlayhead{ position:absolute; top:0; bottom:0; left:0; width:2px; background:var(--rec); z-index:5; pointer-events:none; display:block; }
+  .tl-ctrl-row.placeholder{ opacity:.55; justify-content:center; align-items:center; font-size:10px; color:var(--text-dim); }
+  .tl-lane.placeholder{ display:flex; align-items:center; justify-content:flex-start; }
+  .tl-lane.placeholder span{ font-size:11.5px; color:var(--text-dim); opacity:.8; white-space:nowrap; padding-left:6px; }
   .empty-hint{ color:var(--text-dim); font-size:12.5px; text-align:center; padding:12px 10px; border:1px dashed var(--line); border-radius:20px; background:rgba(255,255,255,.4); margin-top:8px; }
 
 
@@ -156,6 +159,7 @@
   }
   .kb-icon-btn.rec-toggle.active{ background:var(--rec); color:#fff; border-color:var(--rec); }
   .kb-icon-btn.play-toggle.active{ background:var(--blue); color:#fff; border-color:var(--blue); }
+  #kbVol{ flex:0 0 78px; width:78px; accent-color:var(--sky); margin:0; }
   .kb-status{ flex:1; text-align:center; font-family:var(--mono); font-size:11px; color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .kb-status.live{ color:var(--rec); }
 
@@ -205,6 +209,7 @@
   button, select, input{ transition:transform .12s ease, box-shadow .12s ease, background .12s ease; }
   button:active{ transform:scale(.94); }
   .project-save-btn{ border-radius:999px; }
+  .project-save-btn.danger{ border-color:var(--rec); background:var(--rec); }
   .project-panel{ background:rgba(255,255,255,.97); }
 </style>
 </head>
@@ -296,7 +301,6 @@
         </div>
       </div>
     </div>
-    <div class="empty-hint" id="tlEmptyHint">아직 녹음된 트랙이 없어요.<br>오디오 또는 건반 녹음으로 첫 트랙을 만들어보세요.</div>
   </section>
 
   <section class="panel" id="keyboardPanel">
@@ -304,6 +308,7 @@
       <button class="kb-icon-btn rec-toggle" id="kbRecBtn">●</button>
       <button class="kb-icon-btn play-toggle" id="kbPlayBtn">▶</button>
       <button class="kb-icon-btn" id="kbStopBtn">■</button>
+      <input type="range" class="kb-vol" id="kbVol" min="0" max="1.2" step="0.05" value="0.5" title="건반 소리 크기">
       <span class="kb-status" id="kbStatus">대기 중</span>
     </div>
     <div id="pianoWrap"></div>
@@ -326,9 +331,9 @@
       <span style="font-size:11px;color:var(--text-dim);">체크된 트랙만 저장돼요</span>
     </div>
     <div class="row" style="margin-top:6px;">
-      <label class="toggle-chip on" id="mixChip"><input type="checkbox" id="mixToggle" checked>합친 믹스 파일도 저장</label>
+      <label class="toggle-chip on" id="mixChip"><input type="checkbox" id="mixToggle" checked>전체 믹스 파일 저장</label>
       <div style="flex:1"></div>
-      <button class="mini-btn" id="newSessionBtn">새로 시작</button>
+      <button class="project-save-btn danger" id="newSessionBtn">새로 시작</button>
     </div>
     <div id="projectStatus" class="project-status">저장을 누르면 다운로드 폴더에 파일이 저장돼요.</div>
   </section>
@@ -604,6 +609,8 @@
     if (wasPlaying && seconds < sessionContentEnd() - 0.05) playAll(); else if (wasPlaying) releaseWakeLock();
   }
 
+  var EP_LEVEL = 0.5;   // 건반(EP) 음량 — 건반 패널의 볼륨 바로 조절 (라이브 연주·미디 재생·믹스에 모두 적용)
+
   /* simple "EP" synth voice, rendered against any given AudioContext (live or offline) */
   function playEP(ctx, freq, startTime, duration, dest, velocity){
     velocity = velocity || 1;
@@ -615,8 +622,8 @@
     filter.frequency.exponentialRampToValueAtTime(700, startTime + duration + 0.3);
     var amp = ctx.createGain();
     amp.gain.setValueAtTime(0.0001, startTime);
-    amp.gain.exponentialRampToValueAtTime(0.8 * velocity, startTime + 0.006);
-    amp.gain.exponentialRampToValueAtTime(0.3 * velocity, startTime + 0.28);
+    amp.gain.exponentialRampToValueAtTime(0.8 * velocity * EP_LEVEL, startTime + 0.006);
+    amp.gain.exponentialRampToValueAtTime(0.3 * velocity * EP_LEVEL, startTime + 0.28);
     amp.gain.exponentialRampToValueAtTime(0.0001, startTime + duration + 0.3);
     o1.connect(filter); o2.connect(g2); g2.connect(filter);
     filter.connect(amp); amp.connect(dest);
@@ -635,8 +642,8 @@
     var filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 3600;
     var amp = audioCtx.createGain();
     amp.gain.setValueAtTime(0.0001, now);
-    amp.gain.exponentialRampToValueAtTime(0.75, now + 0.006);
-    amp.gain.exponentialRampToValueAtTime(0.32, now + 0.25);
+    amp.gain.exponentialRampToValueAtTime(0.75 * EP_LEVEL, now + 0.006);
+    amp.gain.exponentialRampToValueAtTime(0.32 * EP_LEVEL, now + 0.25);
     o1.connect(filter); o2.connect(g2); g2.connect(filter);
     filter.connect(amp); amp.connect(masterGain);
     o1.start(now); o2.start(now);
@@ -1023,13 +1030,11 @@
   }
 
   function renderTimeline(){
-    var emptyHint = document.getElementById('tlEmptyHint');
     var controls = document.getElementById('tlControls');
     var lanesEl = document.getElementById('tlLanes');
     var content = document.getElementById('tlContent');
     var rulerCv = document.getElementById('tlRuler');
 
-    emptyHint.style.display = tracks.length === 0 ? 'block' : 'none';
     controls.innerHTML = '<div class="tl-ruler-spacer"></div>';
     lanesEl.innerHTML = '';
 
@@ -1080,6 +1085,19 @@
       if (t.type === 'audio') drawLaneWaveform(cv, t.buffer, laneW, laneH, dpr);
       else drawLaneMidiBlock(cv, laneW, laneH, dpr);
     });
+
+    if (tracks.length === 0){
+      // 트랙이 없을 때도 빈 줄 하나를 보여줘서 어디에 녹음되는지 보이게 함 (데이터는 없음)
+      var ph = document.createElement('div');
+      ph.className = 'tl-ctrl-row placeholder';
+      ph.textContent = '트랙 1';
+      controls.appendChild(ph);
+      var phLane = document.createElement('div');
+      phLane.className = 'tl-lane placeholder';
+      phLane.style.width = widthPx + 'px';
+      phLane.innerHTML = '<span>여기에 녹음됩니다 · ● 오디오 / 건반 버튼을 눌러보세요</span>';
+      lanesEl.appendChild(phLane);
+    }
 
     renderPlayheadPosition();
   }
@@ -1686,6 +1704,16 @@
   document.getElementById('kbRecBtn').addEventListener('click', function(){ if (isRecording) stopRecording(); else startRecording('midi'); });
   document.getElementById('kbPlayBtn').addEventListener('click', function(){ if (isPlaying) stopAll(); else playAll(); });
   document.getElementById('kbStopBtn').addEventListener('click', function(){ if (isRecording) stopRecording(); if (isPlaying) stopAll(); });
+  (function(){
+    var el = document.getElementById('kbVol'), saved = null;
+    try { saved = parseFloat(localStorage.getItem('pn-ep-level')); } catch(e){}
+    if (saved != null && !isNaN(saved)) EP_LEVEL = saved;
+    el.value = EP_LEVEL;
+    el.addEventListener('input', function(e){
+      EP_LEVEL = Math.max(0, Math.min(1.2, parseFloat(e.target.value) || 0));
+      try { localStorage.setItem('pn-ep-level', String(EP_LEVEL)); } catch(err){}
+    });
+  })();
 
   /* ---- timeline wiring ---- */
   tlScrollEl = document.getElementById('tlScroll');
@@ -1696,12 +1724,13 @@
     document.getElementById('followChip').classList.toggle('on', followPlayhead);
   });
   document.getElementById('followChip').classList.add('on');
-  document.getElementById('tlLanes').addEventListener('click', function(e){
+  function timelineClickToSeek(e){
     if (isRecording) return;
-    var rect = this.getBoundingClientRect();
-    var x = e.clientX - rect.left;
-    seekTo(x / pxPerSec);
-  });
+    var rect = document.getElementById('tlContent').getBoundingClientRect();
+    seekTo((e.clientX - rect.left) / pxPerSec);
+  }
+  document.getElementById('tlLanes').addEventListener('click', timelineClickToSeek);
+  document.getElementById('tlRuler').addEventListener('click', timelineClickToSeek);
   tlScrollEl.addEventListener('pointerdown', tlPointerDown);
   tlScrollEl.addEventListener('pointermove', tlPointerMove, { passive:false });
   tlScrollEl.addEventListener('pointerup', tlPointerUp);
