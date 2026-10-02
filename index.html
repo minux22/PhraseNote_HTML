@@ -44,7 +44,6 @@
   header{ display:flex; align-items:center; justify-content:space-between; padding:0 3px 9px; border-bottom:2px solid rgba(184,226,216,.7); margin-bottom:9px; }
   header h1{ font-size:21px; letter-spacing:0.01em; margin:0; font-weight:800; color:var(--text); }
   header h1::before{ content:'♪'; display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; margin-right:6px; border-radius:50%; background:#fff; box-shadow:0 3px 10px rgba(70,150,135,.12); font-size:14px; vertical-align:2px; }
-  header .tape-mark{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); background:rgba(255,255,255,.55); padding:4px 8px; border-radius:999px; }
 
   section{ margin-bottom:10px; }
   .panel{ background:var(--panel); border:1px solid rgba(184,226,216,.9); border-radius:22px; padding:11px; box-shadow:0 5px 14px rgba(0,0,0,.09); }
@@ -268,7 +267,6 @@
   html,body{ background:var(--bg); }
   header{ border-bottom-color:var(--line); }
   header h1::before{ background:var(--panel-2); color:var(--amber); box-shadow:none; }
-  header .tape-mark{ background:var(--panel-2); color:var(--text-dim); }
   .panel, .project-panel{ background:var(--panel); border-color:var(--line); box-shadow:0 4px 16px rgba(0,0,0,.4); }
   .tl-body{ background:var(--panel); border-color:var(--line); box-shadow:0 4px 16px rgba(0,0,0,.4); }
   .tl-controls{ background:rgba(255,255,255,.025); border-right-color:var(--line); }
@@ -335,6 +333,52 @@
   .transport-grid{ justify-content:space-between; }
   .t-btn{ max-width:46px; border-radius:12px; }
   .live-wave-wrap{ margin-top:6px; }
+  .project-panel .row.save-options{ flex-wrap:wrap; row-gap:6px; align-items:center; }
+  .latency-btn{ flex:0 0 auto; border:1.5px solid var(--sky); background:var(--panel-2); color:#5cc8f2; border-radius:12px; padding:6px 11px; font-size:12px; font-weight:700; }
+  .latency-btn:disabled{ opacity:.45; }
+  /* 헤더 오른쪽 끝의 레이턴시 측정 버튼 */
+  header{ align-items:center; }
+  .latency-btn{ flex:0 0 auto; border:1.5px solid var(--sky); background:var(--panel-2); color:#5cc8f2; border-radius:12px; padding:6px 11px; font-size:12px; font-weight:700; }
+  .latency-btn:disabled{ opacity:.55; }
+  /* 토스트: LED 링 + 메시지 (+ 되돌리기) */
+  #toast{ display:flex; align-items:center; gap:10px; border-radius:22px; text-align:left; }
+  #toast .toast-msg{ min-width:0; line-height:1.35; }
+  .toast-ring{ flex:0 0 auto; display:flex; }
+  .toast-ring svg{ display:block; transform:rotate(-90deg); overflow:visible; }
+  .toast-ring circle{ fill:none; stroke-width:3.2; }
+  .toast-ring .ring-track{ stroke:rgba(255,255,255,.18); }
+  .toast-ring .ring-led{
+    stroke:var(--sky); stroke-linecap:round; stroke-dasharray:56.55; stroke-dashoffset:0;
+    animation-name:ringdown; animation-timing-function:linear; animation-fill-mode:forwards;
+  }
+  #toast.has-action .ring-led{ stroke:var(--amber); }
+  @keyframes ringdown{ from{ stroke-dashoffset:0; } to{ stroke-dashoffset:56.55; } }
+  /* 저장 세션 규칙 표기 */
+  .session-title{ margin:0 0 6px; font-size:12px; color:var(--text-dim); }
+  .save-rules{ display:flex; flex-direction:column; gap:5px; }
+  .save-divider{ border:0; border-top:1px solid #4a4f57; margin:10px 0 11px; }
+  .rule-row{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .rule-text{ flex:1 1 auto; min-width:0; font-size:11.5px; color:var(--text); line-height:1.4; }
+  .rule-btn{ flex:0 0 auto; border:1px solid var(--line); background:var(--panel-2); color:var(--text-dim); border-radius:999px; padding:4px 10px; font-size:11px; font-weight:700; }
+  .rule-btn.pick.on{ border-color:var(--blue); color:#7db0ff; }
+  .project-status:empty{ display:none; }
+  /* 새로 시작: 별도 박스 */
+  .newsession-panel{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .newsession-caption{ font-size:12px; color:var(--text-dim); }
+  /* 예/아니오 확인 팝업 */
+  .modal-backdrop{ position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.62); display:flex; align-items:center; justify-content:center; padding:20px; }
+  .modal-backdrop[hidden]{ display:none; }
+  .modal-card{ width:min(88vw, 320px); background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:20px 18px 16px; box-shadow:0 12px 40px rgba(0,0,0,.6); }
+  .modal-card p{ margin:0 0 16px; font-size:14.5px; line-height:1.5; text-align:center; color:var(--text); }
+  .modal-actions{ display:flex; gap:10px; }
+  .modal-btn{ flex:1; padding:11px 8px; border-radius:14px; font-size:14px; font-weight:700; border:1px solid var(--line); background:var(--panel-2); color:var(--text); }
+  .modal-btn.danger{ background:var(--rec); border-color:var(--rec); color:#fff; }
+  /* 연주 모드 OFF(기본) = 스크롤 모드: 건반이 터치를 무시해서 위에서도 화면이 스크롤됨 */
+  #pianoWrap{ transition:opacity .15s; }
+  #pianoWrap.locked{ touch-action:auto; opacity:.5; }
+  #pianoWrap.locked .pkey{ pointer-events:none; touch-action:auto; }
+  .play-chip{ flex:0 0 auto; white-space:nowrap; font-size:11.5px; padding:5px 10px; }
+  .play-chip.on{ background:var(--panel-2); border-color:var(--amber); color:var(--amber); font-weight:700; }
 </style>
 </head>
 <body>
@@ -342,7 +386,7 @@
 
   <header>
     <h1>PhraseNote</h1>
-    <span class="tape-mark">By Min</span>
+    <button class="latency-btn" id="latencyMeasureBtn" title="현재 오디오 장치의 지연을 측정해서 녹음 위치를 맞춰요">레이턴시 측정</button>
   </header>
 
   <section class="panel" id="metronomePanel">
@@ -447,12 +491,23 @@
       <button class="kb-icon-btn play-toggle" id="kbPlayBtn">▶</button>
       <button class="kb-icon-btn" id="kbStopBtn">■</button>
       <input type="range" class="kb-vol" id="kbVol" min="0" max="1.2" step="0.05" value="0.5" title="건반 소리 크기">
+      <label class="toggle-chip play-chip" id="playModeChip" title="건반 기능 ON/OFF" aria-label="건반 기능 ON/OFF"><input type="checkbox" id="playModeToggle"><span id="playModeText">건반 OFF</span></label>
     </div>
     <div id="pianoWrap"></div>
   </section>
 
   <section class="panel project-panel">
-    <p style="margin:0 0 8px;font-size:12px;color:var(--text-dim);">저장 세션</p>
+    <p class="session-title">저장하기</p>
+    <div class="save-rules">
+      <div class="rule-row">
+        <span class="rule-text">1. 선택한 트랙을 저장합니다. (WAV / MID)</span>
+        <button class="rule-btn pick on" id="selectAllTracksBtn" aria-pressed="true">전체 선택</button>
+      </div>
+      <div class="rule-row">
+        <span class="rule-text">2. 파일은 Download 폴더에 저장됩니다.</span>
+      </div>
+    </div>
+    <hr class="save-divider">
     <div class="row">
       <div class="field">
         <label>프로젝트명</label>
@@ -460,21 +515,28 @@
       </div>
       <button class="project-save-btn" id="saveProjectBtn">저장</button>
     </div>
-    <div class="row" style="margin-top:8px;">
-      <button class="mini-btn" id="selectAllTracksBtn">전체 선택</button>
-      <button class="mini-btn" id="selectNoneTracksBtn">전체 해제</button>
-      <div style="flex:1"></div>
-      <span style="font-size:11px;color:var(--text-dim);">체크된 트랙만 저장돼요</span>
-    </div>
-    <div class="row" style="margin-top:6px;">
+    <div class="row save-options" style="margin-top:8px;">
       <label class="toggle-chip on" id="mixChip"><input type="checkbox" id="mixToggle" checked>전체 믹스 파일 저장</label>
-      <div style="flex:1"></div>
-      <button class="project-save-btn danger" id="newSessionBtn">새로 시작</button>
+      <label class="toggle-chip on" id="zipChip"><input type="checkbox" id="zipToggle" checked>압축파일(ZIP)로 저장</label>
     </div>
-    <div id="projectStatus" class="project-status">저장을 누르면 다운로드 폴더에 파일이 저장돼요.</div>
+    <div id="projectStatus" class="project-status"></div>
+  </section>
+
+  <section class="panel newsession-panel">
+    <span class="newsession-caption">작업 내용 초기화</span>
+    <button class="project-save-btn danger" id="newSessionBtn">새로 시작</button>
   </section>
 
   <div id="toast"></div>
+  <div id="confirmModal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirmText">
+      <p id="confirmText"></p>
+      <div class="modal-actions">
+        <button class="modal-btn danger" id="confirmYes">예</button>
+        <button class="modal-btn" id="confirmNo">아니오</button>
+      </div>
+    </div>
+  </div>
   <footer>헤드폰 사용을 권장해요 · 마이크가 메트로놈 소리를 함께 녹음할 수 있어요</footer>
 </div>
 
@@ -523,12 +585,30 @@
     metronomeGain = audioCtx.createGain();
     metronomeGain.gain.value = metronomeDuringPlayback ? 0.55 : 0;
     metronomeGain.connect(outputLimiter);
+    refreshLatencyUI();
     var len = Math.floor(audioCtx.sampleRate * 0.3);
     noiseBuffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
     var data = noiseBuffer.getChannelData(0);
     for (var i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
   }
 
+  var micTouchedAt = 0, micGen = 0;
+  /* 녹음이 끝나면 마이크를 놓음: 사용 표시 해제, 배터리 절약, 블루투스 음질 저하 방지 */
+  function releaseMic(){
+    micTouchedAt = Date.now();
+    try { if (micSourceNode) micSourceNode.disconnect(); } catch(e){}
+    try {
+      if (captureNode){
+        captureNode.disconnect();
+        if (captureNode.port) captureNode.port.onmessage = null;
+        captureNode.onaudioprocess = null;
+      }
+    } catch(e){}
+    try { if (captureSink) captureSink.disconnect(); } catch(e){}
+    if (micStream){ try { micStream.getTracks().forEach(function(t){ t.stop(); }); } catch(e){} }
+    micStream = null; micSourceNode = null; analyser = null;
+    captureNode = null; captureSink = null; captureReady = null;
+  }
   function ensureMic(){
     if (micStream) return Promise.resolve();
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
@@ -538,6 +618,7 @@
     return navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false }
     }).then(function(s){
+      micTouchedAt = Date.now();
       micStream = s;
       hideMicBanner();
       setupAnalyser();
@@ -863,12 +944,131 @@
 
   /* ---- 지연(레이턴시) 보정 ---- */
   function outputLatencySec(){ if (!audioCtx) return 0; return (audioCtx.baseLatency || 0) + (audioCtx.outputLatency || 0); }
+  /* 직접 측정한 값(소리 → 스피커 → 마이크 왕복)이 있으면 그 값을, 없으면 브라우저가 알려주는 추정값을 씀.
+     오디오 녹음과 건반 녹음에 같은 값을 일괄 적용. 측정값은 이번 실행에서만 유효하고 오디오 장치가 바뀌면 버려짐. */
+  var measuredLatency = null, measuringLatency = false;
+  function reportedLatencySec(){ return outputLatencySec() + inputLatencySec(); }
+  function totalCompSec(){ return measuredLatency != null ? measuredLatency : reportedLatencySec(); }
+  function outputCompSec(){ return measuredLatency != null ? Math.max(0, measuredLatency - inputLatencySec()) : outputLatencySec(); }
+  function latencyStateText(){
+    if (measuredLatency != null) return '측정값 ' + Math.round(measuredLatency * 1000) + 'ms 적용 중';
+    return '자동 추정 ' + Math.round(reportedLatencySec() * 1000) + 'ms 적용 중';
+  }
+  function refreshLatencyUI(){
+    var btn = document.getElementById('latencyMeasureBtn');
+    if (!btn) return;
+    btn.disabled = measuringLatency;
+    btn.textContent = measuringLatency ? '측정 중…' : '레이턴시 측정';
+  }
+
+  /* ---- 레이턴시 측정: 짧은 톤 소리를 내고 마이크로 다시 들어오기까지의 시간을 잼 ----
+     신호처리는 순수 함수라서 따로 검증 가능: 반환 { ok, delay(초), valid, spread } */
+  function analyzeLatency(x, sr, f0, burstDur, bufStartFrame, t0, count, gap){
+    var n = x.length, w = 2 * Math.PI * f0 / sr, h = Math.round(0.002 * sr);
+    var cI = new Float64Array(n + 1), cQ = new Float64Array(n + 1);
+    for (var i = 0; i < n; i++){
+      cI[i + 1] = cI[i] + x[i] * Math.cos(w * i);
+      cQ[i + 1] = cQ[i] + x[i] * Math.sin(w * i);
+    }
+    function mag(i){
+      var a = Math.max(0, i - h), b = Math.min(n, i + h + 1), len = b - a;
+      if (len <= 0) return 0;
+      var I = (cI[b] - cI[a]) / len, Q = (cQ[b] - cQ[a]) / len;
+      return Math.sqrt(I * I + Q * Q);
+    }
+    var delays = [];
+    for (var k = 0; k < count; k++){
+      var ec = (t0 + k * gap + burstDur / 2) * sr - bufStartFrame;       // 소리가 나간 시각(버스트 중심)의 버퍼 위치
+      var winEnd = Math.min(0.8, gap - 0.07);
+      var from = Math.max(0, Math.round(ec - 0.02 * sr)), to = Math.min(n - 1, Math.round(ec + winEnd * sr));
+      if (to - from < 100) continue;
+      var m = new Float32Array(to - from + 1), sorted = [];
+      for (var j = 0; j < m.length; j += 4){ var v = mag(from + j); m[j] = v; sorted.push(v); }
+      sorted.sort(function(a, b){ return a - b; });
+      var floor = sorted[Math.floor(sorted.length / 2)] || 0;
+      var peak = 0, pj = -1;
+      for (var q = 0; q < m.length; q += 4){ if (m[q] > peak){ peak = m[q]; pj = q; } }
+      if (pj < 0 || peak < 1e-4 || peak < 6 * floor) continue;           // 소리가 안 들어왔거나 잡음에 묻힘
+      // 피크 주변에서 최대값의 절반 이상인 구간의 무게중심 = 도착 시각
+      var half = peak * 0.5, sum = 0, wsum = 0, lim = Math.round(0.06 * sr);
+      for (var r = Math.max(0, pj - lim); r <= Math.min(m.length - 1, pj + lim); r++){
+        var mv = mag(from + r);
+        if (mv >= half){ sum += mv * (from + r); wsum += mv; }
+      }
+      if (wsum <= 0) continue;
+      var d = (sum / wsum - ec) / sr;
+      if (d > -0.005 && d < winEnd) delays.push(Math.max(0, d));
+    }
+    if (delays.length < 3) return { ok:false, valid:delays.length };
+    delays.sort(function(a, b){ return a - b; });
+    return { ok:true, delay: delays[Math.floor(delays.length / 2)], valid:delays.length, spread: delays[delays.length - 1] - delays[0] };
+  }
+  function sleepMs(ms){ return new Promise(function(res){ setTimeout(res, ms); }); }
+  async function measureLatency(){
+    if (measuringLatency) return;
+    if (isRecording || isPlaying || metronomeStandaloneRunning){ showToast('재생·녹음·메트로놈을 멈춘 뒤에 측정해주세요'); return; }
+    measuringLatency = true; refreshLatencyUI();
+    try {
+      initAudio(); await audioCtx.resume();
+      await ensureMic(); await setupCapture();
+      var sr = audioCtx.sampleRate, count = 6, gap = 0.65, burst = 0.03, f0 = 2000;     // 측정 가능 범위 약 0.58초까지
+      var t0 = audioCtx.currentTime + 0.5;
+      showToast('측정 중… 짧은 소리가 나요 (이어폰이면 스피커로 바꾸고 조용한 곳에서)', null, null, Math.round((t0 + count * gap + 0.4 - audioCtx.currentTime) * 1000) + 700);
+      for (var k = 0; k < count; k++){
+        var st = t0 + k * gap;
+        var o = audioCtx.createOscillator(); o.type = 'sine'; o.frequency.value = f0;
+        var g = audioCtx.createGain();
+        g.gain.setValueAtTime(0, st);
+        g.gain.linearRampToValueAtTime(0.85, st + 0.005);
+        g.gain.setValueAtTime(0.85, st + burst - 0.005);
+        g.gain.linearRampToValueAtTime(0, st + burst);
+        o.connect(g); g.connect(audioCtx.destination);       // 마스터 볼륨·리미터를 거치지 않고 항상 같은 크기로
+        o.start(st); o.stop(st + burst + 0.01);
+      }
+      captureChunks = []; captureActive = true;
+      var startFrame = Math.round((t0 - 0.3) * sr);
+      await sleepMs(Math.max(0, (t0 + count * gap + 0.4 - audioCtx.currentTime) * 1000));
+      await flushCapture();
+      captureActive = false;
+      var buf = assembleCapturedBuffer(startFrame);
+      captureChunks = [];
+      var res = buf ? analyzeLatency(buf.getChannelData(0), sr, f0, burst, startFrame, t0, count, gap) : { ok:false, valid:0 };
+      if (res.ok && res.spread < 0.03){
+        measuredLatency = res.delay;
+        showToast('측정 완료 · ' + latencyStateText(), null, null, 3500);
+      } else if (res.ok){
+        showToast('측정값이 들쭉날쭉해요(' + Math.round(res.spread * 1000) + 'ms 차이). 조용한 곳에서 다시 측정해주세요 · ' + latencyStateText(), null, null, 4500);
+      } else {
+        showToast('소리가 마이크에 닿지 않았어요. 스피커로 바꾸고 볼륨을 올려 다시 측정해주세요 · ' + latencyStateText(), null, null, 4500);
+      }
+    } catch(e){
+      console.warn('레이턴시 측정 실패:', e);
+      showToast('측정에 실패했어요. 마이크 권한을 확인해주세요 · ' + latencyStateText(), null, null, 4000);
+    } finally {
+      captureActive = false;
+      measuringLatency = false;
+      if (!isRecording) releaseMic();
+      refreshLatencyUI();
+    }
+  }
+  /* 오디오 장치가 바뀌면(블루투스 연결/해제 등) 예전 측정값은 틀려지므로 버림 */
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener){
+    navigator.mediaDevices.addEventListener('devicechange', function(){
+      if (measuringLatency || Date.now() - micTouchedAt < 2000) return;       // 우리가 마이크를 열고 닫은 직후의 변화는 무시
+      if (measuredLatency != null){
+        measuredLatency = null;
+        showToast('오디오 장치가 바뀌었어요 · 레이턴시를 다시 측정해보세요 (자동 추정 ' + Math.round(reportedLatencySec() * 1000) + 'ms 적용 중)', null, null, 4000);
+      }
+      refreshLatencyUI();
+    });
+  }
   function inputLatencySec(){
     try { var st = micStream && micStream.getAudioTracks()[0].getSettings(); return (st && typeof st.latency === 'number') ? st.latency : 0; }
     catch(e){ return 0; }
   }
 
   /* ---- 마이크 PCM 직접 캡처 (MediaRecorder 대체: 샘플 단위 정확 + 무손실) ---- */
+  var workletReady = false;
   var captureNode = null, captureSink = null, captureChunks = [], captureActive = false, captureReady = null, flushResolver = null;
   var CAPTURE_WORKLET = "class PNCapture extends AudioWorkletProcessor{constructor(){super();this.buf=new Float32Array(4096);this.n=0;this.start=0;" +
     "this.port.onmessage=()=>{if(this.n){this.port.postMessage({frame:this.start,data:this.buf.slice(0,this.n)});this.n=0;}this.port.postMessage({flushed:true});};}" +
@@ -891,8 +1091,13 @@
         captureNode = sp; resolve();
       }
       if (audioCtx.audioWorklet && window.AudioWorkletNode){
-        var url = URL.createObjectURL(new Blob([CAPTURE_WORKLET], { type:'application/javascript' }));
-        audioCtx.audioWorklet.addModule(url).then(function(){
+        var loadP;
+        if (workletReady) loadP = Promise.resolve();
+        else {
+          var url = URL.createObjectURL(new Blob([CAPTURE_WORKLET], { type:'application/javascript' }));
+          loadP = audioCtx.audioWorklet.addModule(url).then(function(){ workletReady = true; });
+        }
+        loadP.then(function(){
           var node = new AudioWorkletNode(audioCtx, 'pn-capture', { numberOfInputs:1, numberOfOutputs:1, channelCount:1, channelCountMode:'explicit' });
           node.port.onmessage = function(ev){
             if (ev.data.flushed){ if (flushResolver){ var r = flushResolver; flushResolver = null; r(); } return; }
@@ -956,6 +1161,17 @@
   var selectedClipId = null, clipIdSeq = 1, typeSeq = { audio:0, midi:0 };
   var undoStack = [];
   function hasContent(){ return tracks.some(function(t){ return t.clips.length > 0; }); }
+  /* 저장 대상(클립이 있는 트랙)이 모두 선택돼 있는지 — '전체 선택' 버튼의 켜짐/꺼짐 상태 */
+  function allSavableSelected(){
+    var list = tracks.filter(function(t){ return t.clips.length > 0; });
+    return list.length > 0 && list.every(function(t){ return t.selected !== false; });
+  }
+  function refreshSelectAllUI(){
+    var b = document.getElementById('selectAllTracksBtn'); if (!b) return;
+    var on = allSavableSelected();
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
   function trackById(id){ for (var i = 0; i < tracks.length; i++) if (tracks[i].id === id) return tracks[i]; return null; }
   function findClip(clipId){
     for (var i = 0; i < tracks.length; i++){
@@ -968,10 +1184,16 @@
 
   /* 안내 토스트 (되돌리기 같은 버튼을 달 수 있음) */
   var toastTimer = null;
-  function showToast(msg, actionLabel, actionFn){
+  function showToast(msg, actionLabel, actionFn, durationMs){
     var el = document.getElementById('toast'); if (!el) return;
+    var ms = durationMs || (actionFn ? 6000 : 2800);
     el.innerHTML = '';
-    var sp = document.createElement('span'); sp.textContent = msg; el.appendChild(sp);
+    // 줄어드는 원형 LED 링: 팝업이 닫히는 시점을 눈으로 예측할 수 있음 (되돌리기 버튼이 사라지는 때도 동일)
+    var ring = document.createElement('span');
+    ring.className = 'toast-ring';
+    ring.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22"><circle class="ring-track" cx="12" cy="12" r="9"></circle><circle class="ring-led" cx="12" cy="12" r="9" style="animation-duration:' + ms + 'ms"></circle></svg>';
+    el.appendChild(ring);
+    var sp = document.createElement('span'); sp.className = 'toast-msg'; sp.textContent = msg; el.appendChild(sp);
     el.classList.toggle('has-action', !!actionFn);
     if (actionFn){
       var b = document.createElement('button'); b.textContent = actionLabel || '되돌리기';
@@ -980,7 +1202,7 @@
     }
     el.classList.add('show');
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(function(){ el.classList.remove('show'); toastTimer = null; }, actionFn ? 6000 : 2800);
+    toastTimer = setTimeout(function(){ el.classList.remove('show'); toastTimer = null; }, ms);
   }
 
   /* 되돌리기: 클립 객체는 바뀌지 않으므로 구조만 얕게 복사해 두면 충분함 */
@@ -1136,7 +1358,10 @@
     }
     armedTrackId = target.id;
     activeRecordTrackId = target.id;
+    if (type === 'midi') setPlayMode(true);      // 건반 녹음을 시작하면 터치 연주가 되도록 자동으로 연주 모드 ON
 
+    if (measuringLatency){ showToast('레이턴시 측정이 끝난 뒤에 녹음해주세요'); return; }
+    if (type === 'audio') micGen++;
     var proceed = (type === 'audio') ? ensureMic().then(setupCapture) : Promise.resolve();
     proceed.then(function(){
       if (metronomeStandaloneRunning){ metronomeStandaloneRunning = false; stopScheduler(); }
@@ -1149,6 +1374,7 @@
       updateTransportUI();
       acquireWakeLock();
       showToast(msg);
+      refreshLatencyUI();
 
       var bd = beatDuration();
       var countInBeats = countInEnabled ? countInBars * beatsPerBar : 0;
@@ -1259,12 +1485,15 @@
       stopLiveWave();
       var offset = pendingRecordOffset;
       // 스피커 출력 지연 + 마이크 입력 지연 + 사용자 보정값만큼 앞부분을 잘라내서 박자에 맞춤
-      var latency = outputLatencySec() + inputLatencySec();
+      var latency = totalCompSec();
       var startFrame = Math.round((recordStartCtxTime + latency) * audioCtx.sampleRate);
+      var gen = micGen;
       flushCapture().then(function(){
         captureActive = false;
         var buffer = assembleCapturedBuffer(startFrame);
         captureChunks = [];
+        if (gen === micGen && !isRecording && !measuringLatency) releaseMic();   // 그 사이 새 녹음이 시작됐으면 놓지 않음
+        refreshLatencyUI();
         if (!buffer || buffer.duration < 0.05) return;
         commitAudioTake(targetId, buffer, offset);
       });
@@ -1532,7 +1761,7 @@
         if (e.target.closest('button, input')) return;
         armTrack(t.id);
       });
-      row.querySelector('.track-select-cb').onchange = function(e){ t.selected = e.target.checked; saveSessionMeta(); };
+      row.querySelector('.track-select-cb').onchange = function(e){ t.selected = e.target.checked; refreshSelectAllUI(); saveSessionMeta(); };
       row.querySelector('.mute-btn').onclick = function(){ t.muted = !t.muted; renderTimeline(); applyTrackGains(); saveSessionMeta(); };
       row.querySelector('.solo-btn').onclick = function(){ t.solo = !t.solo; renderTimeline(); applyTrackGains(); saveSessionMeta(); };
       row.querySelector('.del-btn').onclick = function(){ deleteTrack(t); };
@@ -1560,6 +1789,7 @@
     });
 
     lastRenderedBars = sessionBarCount();
+    refreshSelectAllUI();
     if (isRecording) showRecordingLane();
     refreshClipSelectionUI();
     renderPlayheadPosition();
@@ -1727,6 +1957,10 @@
     var microsPerQuarter = Math.round(60000000 / bpmUsed);
     trackBytes.push(0x00, 0xFF, 0x51, 0x03,
       (microsPerQuarter >> 16) & 0xFF, (microsPerQuarter >> 8) & 0xFF, microsPerQuarter & 0xFF);
+    // 박자표 (FF 58): 분자 = 마디당 박 수, 분모는 2의 거듭제곱 지수(4→2, 8→3), 메트로놈 클릭당 MIDI 클럭, 4분음표당 32분음표 수(8)
+    // 이게 없으면 DAW가 4/4로 간주해서 마디선이 어긋나 보임
+    trackBytes.push(0x00, 0xFF, 0x58, 0x04,
+      Math.max(1, Math.min(255, beatsPerBar)), Math.round(Math.log2(noteValue)), Math.max(1, Math.round(96 / noteValue)), 8);
 
     var lastTick = 0;
     events.forEach(function(ev){
@@ -1823,6 +2057,36 @@
   function projectFilePrefix(index, track){
     return projectBase() + '_' + trackLabel(track) + (track.type === 'audio' ? '.wav' : '.mid');
   }
+  var CRC_TABLE = (function(){
+    var t = new Uint32Array(256);
+    for (var n = 0; n < 256; n++){ var c = n; for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; }
+    return t;
+  })();
+  function crc32(u8){ var c = 0xFFFFFFFF; for (var i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+  async function buildZip(files){
+    var enc = new TextEncoder(), parts = [], central = [], offset = 0;
+    for (var i = 0; i < files.length; i++){
+      var data = new Uint8Array(await files[i].blob.arrayBuffer());
+      var name = enc.encode(files[i].name), crc = crc32(data);
+      var lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+      lh.setUint16(10, 0, true); lh.setUint16(12, 0x21, true); lh.setUint32(14, crc, true);
+      lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+      parts.push(lh, name, data);
+      var ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true);
+      ch.setUint16(12, 0, true); ch.setUint16(14, 0x21, true); ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true);
+      ch.setUint16(28, name.length, true); ch.setUint16(30, 0, true); ch.setUint16(32, 0, true); ch.setUint16(34, 0, true); ch.setUint16(36, 0, true);
+      ch.setUint32(38, 0, true); ch.setUint32(42, offset, true);
+      central.push(ch, name);
+      offset += 30 + name.length + data.length;
+    }
+    var cdSize = 0; central.forEach(function(x){ cdSize += x.byteLength; });
+    var end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+    end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+    return new Blob(parts.concat(central, [end]), { type:'application/zip' });
+  }
   function downloadFiles(files){
     files.forEach(function(f, i){ setTimeout(function(){ downloadBlob(f.blob, f.name); }, i * 500); });
   }
@@ -1842,8 +2106,15 @@
         if (mixBlob) files.push({ name: projectName + '_Mix.wav', blob: mixBlob });
       } catch(e){ console.warn('믹스 실패:', e); }
     }
-    downloadFiles(files);
-    status.textContent = files.length + '개 파일을 다운로드 폴더에 저장했어요. (' + projectName + '_…)';
+    if (document.getElementById('zipToggle').checked){
+      status.textContent = 'ZIP 파일 만드는 중…';
+      var zip = await buildZip(files);
+      downloadBlob(zip, projectName + '.zip');
+      status.textContent = projectName + '.zip 으로 저장했어요 (파일 ' + files.length + '개).';
+    } else {
+      downloadFiles(files);
+      status.textContent = files.length + '개 파일을 다운로드 폴더에 저장했어요. (' + projectName + '_…)';
+    }
   }
 
   /* ============ 작업 자동 보관 (브라우저 내부 IndexedDB) ============
@@ -1982,8 +2253,28 @@
       if (filled) document.getElementById('projectStatus').textContent = '이전 작업(녹음된 트랙 ' + filled + '개)을 복구했어요.';
     }).catch(function(e){ console.warn('복구 실패:', e); });
   }
+  /* 예/아니오 확인 팝업 (기본 포커스는 '아니오'라서 실수로 엔터를 쳐도 지워지지 않음) */
+  var confirmResolver = null;
+  function askConfirm(message){
+    return new Promise(function(resolve){
+      var m = document.getElementById('confirmModal');
+      document.getElementById('confirmText').textContent = message;
+      confirmResolver = resolve;
+      m.hidden = false;
+      document.getElementById('confirmNo').focus();
+    });
+  }
+  function closeConfirm(result){
+    var m = document.getElementById('confirmModal');
+    m.hidden = true;
+    var r = confirmResolver; confirmResolver = null;
+    if (r) r(result);
+  }
+  function confirmOpen(){ var m = document.getElementById('confirmModal'); return !!m && !m.hidden; }
+  function requestNewSession(){
+    askConfirm('현재 데이터를 지우고 새로 시작할까요?').then(function(ok){ if (ok) newSession(); });
+  }
   function newSession(){
-    if (hasContent() && !confirm('지금 트랙을 모두 지우고 새로 시작할까요? (저장하지 않은 녹음은 사라져요)')) return;
     if (isRecording) stopRecording();
     if (isPlaying) stopAll();
     tracks = []; trackIdSeq = 1; clipIdSeq = 1; typeSeq = { audio:0, midi:0 };
@@ -2070,8 +2361,19 @@
     wrap.appendChild(buildPianoRow(60, 0));
   }
 
+  /* 연주 모드: 기본은 OFF(스크롤 모드). ON일 때만 건반을 터치로 칠 수 있음. 쿼티·외부 MIDI 연주는 모드와 상관없이 항상 동작 */
+  var playMode = false, lockHintAt = 0;
+  function setPlayMode(on){
+    playMode = !!on;
+    var wrap = document.getElementById('pianoWrap'); if (wrap) wrap.classList.toggle('locked', !playMode);
+    var chip = document.getElementById('playModeChip'), cb = document.getElementById('playModeToggle'), tx = document.getElementById('playModeText');
+    if (chip) chip.classList.toggle('on', playMode);
+    if (cb) cb.checked = playMode;
+    if (tx) tx.textContent = playMode ? '건반 ON' : '건반 OFF';
+    if (!playMode) Object.keys(activeNoteOns).forEach(function(n){ releaseKey(n); });   // 누르고 있던 음이 남지 않게
+  }
   function attachKeyHandlers(d, n){
-    d.addEventListener('pointerdown', function(ev){ ev.preventDefault(); pressKey(n); });
+    d.addEventListener('pointerdown', function(ev){ if (!playMode) return; ev.preventDefault(); pressKey(n); });
     d.addEventListener('pointerup', function(ev){ ev.preventDefault(); releaseKey(n.name); });
     d.addEventListener('pointerleave', function(ev){ releaseKey(n.name); });
     d.addEventListener('pointercancel', function(ev){ releaseKey(n.name); });
@@ -2083,7 +2385,7 @@
     var nodes = startLiveNote(n.freq);
     nodes.midi = n.midi;
     if (isRecording && recordingType === 'midi'){
-      nodes.recStart = Math.max(0, audioCtx.currentTime - recordStartCtxTime - outputLatencySec());
+      nodes.recStart = Math.max(0, audioCtx.currentTime - recordStartCtxTime - outputCompSec());
     }
     activeNoteOns[n.name] = nodes;
     var el = document.querySelector('.pkey[data-note="' + n.name + '"]');
@@ -2094,7 +2396,7 @@
     if (!nodes) return;
     stopLiveNote(nodes);
     if (isRecording && recordingType === 'midi' && nodes.recStart != null){
-      var offT = Math.max(nodes.recStart + 0.05, audioCtx.currentTime - recordStartCtxTime - outputLatencySec());
+      var offT = Math.max(nodes.recStart + 0.05, audioCtx.currentTime - recordStartCtxTime - outputCompSec());
       tempMidiNotes.push({ freq: nodes.freq, midi: nodes.midi, on: nodes.recStart, off: offT });
     }
     delete activeNoteOns[name];
@@ -2114,7 +2416,7 @@
   }
   function lookupKey(e){ return keyByCode[e.code] || keyByChar[String(e.key || '').toLowerCase()] || null; }
   document.addEventListener('keydown', function(e){
-    if (isTextEntry(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;   // 프로젝트명 등을 칠 때는 소리 안 나게
+    if (confirmOpen() || isTextEntry(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;   // 프로젝트명 등을 칠 때는 소리 안 나게
     var n = lookupKey(e);
     if (n && !e.repeat) pressKey(n);
   });
@@ -2197,7 +2499,12 @@
   document.getElementById('noteValueSelect').addEventListener('change', function(e){ noteValue = parseInt(e.target.value, 10); refreshDefaultZoom(); renderTimeline(); saveSessionMeta(); });
   try { localStorage.removeItem('pn-sync-ms'); } catch(e){}   // 예전 싱크 보정값 정리
   document.getElementById('mixToggle').addEventListener('change', function(e){ document.getElementById('mixChip').classList.toggle('on', e.target.checked); });
-  document.getElementById('newSessionBtn').addEventListener('click', newSession);
+  document.getElementById('zipToggle').addEventListener('change', function(e){ document.getElementById('zipChip').classList.toggle('on', e.target.checked); });
+  document.getElementById('newSessionBtn').addEventListener('click', requestNewSession);
+  document.getElementById('confirmYes').addEventListener('click', function(){ closeConfirm(true); });
+  document.getElementById('confirmNo').addEventListener('click', function(){ closeConfirm(false); });
+  document.getElementById('confirmModal').addEventListener('click', function(e){ if (e.target === this) closeConfirm(false); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && confirmOpen()) closeConfirm(false); });
   document.getElementById('metronomeSoundSelect').addEventListener('change', function(e){ metronomeSound = e.target.value; });
   document.getElementById('metroToggleBtn').classList.toggle('active', metronomeDuringPlayback);
   document.getElementById('metroToggleBtn').addEventListener('click', function(){
@@ -2221,6 +2528,7 @@
     document.getElementById('masterVolValue').textContent = v.toFixed(1) + 'x';
     try { localStorage.setItem('pn-master-vol', String(v)); } catch(e){}
   }
+  document.getElementById('latencyMeasureBtn').addEventListener('click', measureLatency);
   document.getElementById('masterVol').addEventListener('input', function(e){ applyMasterVol(parseFloat(e.target.value)); });
   (function(){
     var saved = null;
@@ -2237,13 +2545,23 @@
   document.getElementById('playBtn').addEventListener('click', function(){ initAudio(); audioCtx.resume(); playAll(); });
   document.getElementById('stopBtn').addEventListener('click', function(){ if (isRecording) stopRecording(); if (isPlaying) stopAll(); });
   document.getElementById('rewindBtn').addEventListener('click', function(){ seekTo(0); });
-  document.getElementById('selectAllTracksBtn').addEventListener('click', function(){ tracks.forEach(function(t){ t.selected = true; }); renderTimeline(); saveSessionMeta(); });
-  document.getElementById('selectNoneTracksBtn').addEventListener('click', function(){ tracks.forEach(function(t){ t.selected = false; }); renderTimeline(); saveSessionMeta(); });
+  document.getElementById('selectAllTracksBtn').addEventListener('click', function(){
+    var target = !allSavableSelected();          // 전부 선택돼 있으면 모두 해제, 아니면 모두 선택
+    tracks.forEach(function(t){ if (t.clips.length) t.selected = target; });
+    renderTimeline(); saveSessionMeta();
+  });
   document.getElementById('projectNameInput').addEventListener('input', function(){ projectNameAuto = false; });
   document.getElementById('projectNameInput').addEventListener('blur', function(e){
     if (!e.target.value.trim()){ projectNameAuto = true; updateDefaultProjectName(); }
   });
   document.getElementById('saveProjectBtn').addEventListener('click', saveProject);
+  document.getElementById('playModeToggle').addEventListener('change', function(e){ setPlayMode(e.target.checked); });
+  document.getElementById('pianoWrap').addEventListener('click', function(){
+    if (playMode || Date.now() - lockHintAt < 2500) return;     // 잠긴 건반을 탭하면 켜는 방법을 알려줌
+    lockHintAt = Date.now();
+    showToast('건반 기능이 꺼져있어요.', '켜기', function(){ setPlayMode(true); });
+  });
+  setPlayMode(false);
   document.getElementById('kbRecBtn').addEventListener('click', function(){ if (isRecording) stopRecording(); else startRecording('midi'); });
   document.getElementById('kbPlayBtn').addEventListener('click', function(){ if (isPlaying) stopAll(); else playAll(); });
   document.getElementById('kbStopBtn').addEventListener('click', function(){ if (isRecording) stopRecording(); if (isPlaying) stopAll(); });
